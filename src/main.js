@@ -1,26 +1,38 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, safeStorage } = require('electron');
 const path = require('path');
+const { Worker } = require('worker_threads');
 const Store = require('electron-store');
 
 const store = new Store({
   name: 'semantic-ai-browser',
   defaults: {
     groqModel: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+    transcriptionModel: process.env.GROQ_TRANSCRIPTION_MODEL || 'whisper-large-v3-turbo',
     apiKeys: [],
     activeApiKeyId: null,
     pages: [],
-    collections: []
+    contextState: {
+      url: '',
+      title: '',
+      visibleText: '',
+      signals: [],
+      updatedAt: null
+    }
   }
 });
 
+let mainWindow;
+const semanticWorker = new Worker(path.join(__dirname, 'workers', 'semantic-indexer.js'));
+const pendingWorkerJobs = new Map();
+
 function createWindow() {
-  const win = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1480,
     height: 940,
-    minWidth: 1120,
+    minWidth: 1080,
     minHeight: 720,
     title: 'Semantic AI Browser',
-    backgroundColor: '#090b14',
+    backgroundColor: '#05070d',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -29,71 +41,132 @@ function createWindow() {
     }
   });
 
-  win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 }
 
 app.whenReady().then(() => {
   createWindow();
-
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
 app.on('window-all-closed', () => {
+  semanticWorker.terminate();
   if (process.platform !== 'darwin') app.quit();
 });
 
+semanticWorker.on('message', (message) => {
+  const pending = pendingWorkerJobs.get(message.jobId);
+  if (!pending) return;
+  pendingWorkerJobs.delete(message.jobId);
+  if (message.error) pending.reject(new Error(message.error));
+  else pending.resolve(message.payload);
+});
+
+function runWorker(type, payload) {
+  const jobId = `job_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  semanticWorker.postMessage({ jobId, type, payload });
+  return new Promise((resolve, reject) => {
+    pendingWorkerJobs.set(jobId, { resolve, reject });
+    setTimeout(() => {
+      if (!pendingWorkerJobs.has(jobId)) return;
+      pendingWorkerJobs.delete(jobId);
+      reject(new Error('Le worker sémantique n’a pas répondu à temps.'));
+    }, 8000);
+  });
+}
+
+function encryptSecret(value) {
+  if (safeStorage.isEncryptionAvailable()) {
+    return { scheme: 'safeStorage', value: safeStorage.encryptString(value).toString('base64') };
+  }
+  return { scheme: 'plain-local', value };
+}
+
+function decryptSecret(secret) {
+  if (!secret) return '';
+  if (secret.scheme === 'safeStorage') return safeStorage.decryptString(Buffer.from(secret.value, 'base64'));
+  return secret.value || '';
+}
+
 function safeKeyDescriptor(key) {
+  const value = decryptSecret(key.secret);
   return {
     id: key.id,
     label: key.label,
     provider: key.provider,
     createdAt: key.createdAt,
-    masked: key.value ? `${key.value.slice(0, 6)}••••${key.value.slice(-4)}` : ''
+    masked: value ? `${value.slice(0, 6)}••••${value.slice(-4)}` : '',
+    encrypted: key.secret?.scheme === 'safeStorage'
   };
 }
 
-function getActiveKey() {
+function getActiveKeyValue() {
+  const envKey = process.env.GROQ_API_KEY;
+  if (envKey) return envKey;
   const keys = store.get('apiKeys', []);
   const activeId = store.get('activeApiKeyId');
-  return keys.find((key) => key.id === activeId) || keys[0] || null;
+  const active = keys.find((key) => key.id === activeId) || keys[0] || null;
+  return active ? decryptSecret(active.secret) : '';
 }
+
+async function groqChat(messages, options = {}) {
+  const key = getActiveKeyValue();
+  if (!key) throw new Error('Ajoute une clé API Groq dans Paramètres ou GROQ_API_KEY.');
+
+  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: options.model || store.get('groqModel'),
+      messages,
+      temperature: options.temperature ?? 0.25,
+      max_tokens: options.maxTokens || 900
+    })
+  });
+
+  if (!response.ok) throw new Error(`Groq ${response.status}: ${(await response.text()).slice(0, 240)}`);
+  const data = await response.json();
+  return data.choices?.[0]?.message?.content || '';
+}
+
+ipcMain.handle('app:runtime', () => ({
+  webviewPreload: `file://${path.join(__dirname, 'webview', 'context-preload.js').replace(/\\/g, '/')}`
+}));
 
 ipcMain.handle('settings:get', () => ({
   groqModel: store.get('groqModel'),
+  transcriptionModel: store.get('transcriptionModel'),
   apiKeys: store.get('apiKeys', []).map(safeKeyDescriptor),
-  activeApiKeyId: store.get('activeApiKeyId')
+  activeApiKeyId: store.get('activeApiKeyId'),
+  envKeyAvailable: Boolean(process.env.GROQ_API_KEY)
 }));
 
-ipcMain.handle('settings:set-model', (_event, model) => {
-  store.set('groqModel', String(model || '').trim() || 'llama-3.3-70b-versatile');
-  return { ok: true, groqModel: store.get('groqModel') };
+ipcMain.handle('settings:set-models', (_event, payload) => {
+  store.set('groqModel', String(payload?.groqModel || '').trim() || 'llama-3.3-70b-versatile');
+  store.set('transcriptionModel', String(payload?.transcriptionModel || '').trim() || 'whisper-large-v3-turbo');
+  return { ok: true };
 });
 
 ipcMain.handle('keys:add', (_event, payload) => {
   const value = String(payload?.value || '').trim();
-  if (!value.startsWith('gsk_')) {
-    throw new Error('La clé Groq doit commencer par gsk_.');
-  }
-
+  if (!value.startsWith('gsk_')) throw new Error('La clé Groq doit commencer par gsk_.');
   const apiKeys = store.get('apiKeys', []);
   const key = {
     id: `key_${Date.now()}`,
     label: String(payload?.label || `Groq ${apiKeys.length + 1}`).trim(),
     provider: 'groq',
-    value,
+    secret: encryptSecret(value),
     createdAt: new Date().toISOString()
   };
-
   store.set('apiKeys', [...apiKeys, key]);
   store.set('activeApiKeyId', key.id);
   return safeKeyDescriptor(key);
 });
 
 ipcMain.handle('keys:activate', (_event, id) => {
-  const exists = store.get('apiKeys', []).some((key) => key.id === id);
-  if (!exists) throw new Error('Clé introuvable.');
+  if (!store.get('apiKeys', []).some((key) => key.id === id)) throw new Error('Clé introuvable.');
   store.set('activeApiKeyId', id);
   return { ok: true };
 });
@@ -101,58 +174,70 @@ ipcMain.handle('keys:activate', (_event, id) => {
 ipcMain.handle('keys:remove', (_event, id) => {
   const apiKeys = store.get('apiKeys', []).filter((key) => key.id !== id);
   store.set('apiKeys', apiKeys);
-  if (store.get('activeApiKeyId') === id) {
-    store.set('activeApiKeyId', apiKeys[0]?.id || null);
-  }
+  if (store.get('activeApiKeyId') === id) store.set('activeApiKeyId', apiKeys[0]?.id || null);
   return { ok: true };
 });
 
 ipcMain.handle('pages:list', () => store.get('pages', []));
 
-ipcMain.handle('pages:save', (_event, page) => {
+ipcMain.handle('context:update', async (_event, context) => {
   const pages = store.get('pages', []);
-  const normalized = {
-    id: page.id || `page_${Date.now()}`,
-    title: String(page.title || 'Sans titre').slice(0, 180),
-    url: String(page.url || ''),
-    text: String(page.text || '').slice(0, 30000),
-    summary: String(page.summary || '').slice(0, 1200),
-    keywords: Array.isArray(page.keywords) ? page.keywords.slice(0, 32) : [],
-    visits: Number(page.visits || 1),
-    updatedAt: new Date().toISOString()
-  };
-  const next = [normalized, ...pages.filter((item) => item.url !== normalized.url)].slice(0, 500);
-  store.set('pages', next);
-  return normalized;
+  const enriched = await runWorker('enrich-fragment', { context, pages });
+  const nextContext = { ...context, ...enriched, updatedAt: new Date().toISOString() };
+  store.set('contextState', nextContext);
+
+  if (enriched.shouldIndex) {
+    const normalized = {
+      id: enriched.id,
+      title: context.title || 'Sans titre',
+      url: context.url || '',
+      text: context.visibleText || '',
+      summary: enriched.summary,
+      keywords: enriched.keywords,
+      vector: enriched.vector,
+      dwellMs: context.dwellMs || 0,
+      updatedAt: nextContext.updatedAt
+    };
+    store.set('pages', [normalized, ...pages.filter((item) => item.url !== normalized.url)].slice(0, 700));
+  }
+
+  return nextContext;
 });
 
-ipcMain.handle('ai:chat', async (_event, messages) => {
-  const key = getActiveKey();
-  if (!key) {
-    throw new Error('Ajoute une clé API Groq dans Paramètres avant d’utiliser l’IA.');
-  }
+ipcMain.handle('ai:chat', async (_event, payload) => {
+  return groqChat(payload.messages, payload.options || {});
+});
 
-  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+ipcMain.handle('ai:ghost-suggestion', async (_event, context) => {
+  if (!context?.visibleText || context.visibleText.length < 180) return '';
+  const localMatches = await runWorker('match', { query: context.visibleText, pages: store.get('pages', []) });
+  return groqChat([
+    { role: 'system', content: 'Tu es une IA de navigateur invisible. Réponds en français avec une seule suggestion courte, utile et non intrusive. Maximum 22 mots.' },
+    { role: 'user', content: `Page: ${context.title}\nURL: ${context.url}\nTexte visible: ${context.visibleText.slice(0, 1800)}\nSouvenirs locaux similaires: ${JSON.stringify(localMatches.slice(0, 3))}` }
+  ], { temperature: 0.2, maxTokens: 80 });
+});
+
+ipcMain.handle('voice:transcribe', async (_event, audioPayload) => {
+  const key = getActiveKeyValue();
+  if (!key) throw new Error('Ajoute une clé Groq avant la transcription vocale.');
+  const bytes = Buffer.from(audioPayload.base64, 'base64');
+  const form = new FormData();
+  form.append('model', store.get('transcriptionModel'));
+  form.append('file', new Blob([bytes], { type: audioPayload.mimeType || 'audio/webm' }), 'voice.webm');
+  const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${key.value}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      model: store.get('groqModel'),
-      messages,
-      temperature: 0.35,
-      max_tokens: 900
-    })
+    headers: { Authorization: `Bearer ${key}` },
+    body: form
   });
-
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`Groq a répondu ${response.status}: ${detail.slice(0, 240)}`);
-  }
-
+  if (!response.ok) throw new Error(`Transcription Groq ${response.status}: ${(await response.text()).slice(0, 200)}`);
   const data = await response.json();
-  return data.choices?.[0]?.message?.content || 'Aucune réponse.';
+  return data.text || '';
+});
+
+ipcMain.handle('page:capture', async () => {
+  if (!mainWindow) return null;
+  const image = await mainWindow.webContents.capturePage();
+  return image.resize({ width: 960 }).toDataURL();
 });
 
 ipcMain.handle('external:open', (_event, url) => shell.openExternal(url));

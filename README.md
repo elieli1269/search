@@ -1,18 +1,33 @@
 # Semantic AI Browser
 
-Semantic AI Browser est un prototype de navigateur web IA construit avec Electron. Il combine navigation classique, index sémantique local et copilote Groq pour transformer les pages visitées en mémoire exploitable.
+Semantic AI Browser est un prototype de navigateur Electron **Zero‑UI**: l’interface disparaît progressivement au profit de la voix, de la conscience contextuelle et de suggestions fantômes injectées dans la page active.
 
-## Fonctionnalités
+## Vision produit
 
-- Navigation web avec barre d'adresse et recherche.
-- Panneau IA latéral pour résumer, analyser et explorer la page active.
-- Index sémantique local des pages capturées: titre, résumé, mots-clés et recherche de similarité légère.
-- Gestion de plusieurs clés API Groq depuis l'interface.
-- Packaging Windows `.exe` avec `electron-builder`.
+- **Zero‑UI**: plus de panneau latéral permanent ni de boutons d’analyse; l’omnibox est discrète et l’IA apparaît sous forme d’aura ou de bulle fantôme.
+- **Voice‑first**: capture micro avec Web Audio, détection d’activité vocale et transcription Groq Whisper pour transformer la parole en intentions.
+- **Contexte temps réel**: un preload de webview observe le texte visible, les images visibles, le scroll, la souris et les mutations DOM.
+- **Ghost UI**: les suggestions sont injectées dans la page via Shadow DOM pour éviter les conflits CSS.
+- **Index prédictif local**: un worker Node.js enrichit les fragments lus, calcule des mots‑clés/vecteurs légers et croise le contexte actuel avec la mémoire locale.
+
+## Architecture
+
+```text
+src/main.js                       Processus principal Electron, IPC, Groq, safeStorage, worker
+src/preload.js                    API sécurisée exposée au renderer
+src/renderer/app.js               Orchestration Zero‑UI, intentions, contexte, suggestions
+src/renderer/voice-engine.js      Capture audio, VAD simple, transcription
+src/webview/context-preload.js    Observation DOM temps réel et Shadow DOM Ghost UI
+src/workers/semantic-indexer.js   Indexation prédictive hors thread UI
+```
 
 ## Sécurité des clés API
 
-Aucune clé API réelle n'est intégrée au code source. Pour utiliser Groq, ajoute une clé dans l'écran **Paramètres** ou configure `GROQ_API_KEY` localement dans ton environnement. Ne publie jamais une clé dans GitHub.
+Aucune clé API réelle n’est intégrée au code source. Les clés ajoutées dans l’application sont chiffrées avec `safeStorage` quand Electron le permet; sinon elles restent limitées au stockage local de l’application. La méthode recommandée en production reste la variable d’environnement:
+
+```bash
+GROQ_API_KEY=gsk_your_key_here npm start
+```
 
 ## Développement
 
@@ -21,6 +36,8 @@ npm install
 npm start
 ```
 
+Sans microphone ou sans clé Groq, l’application reste utilisable avec l’omnibox: tape `/résume cette page`, `/va sur wikipedia`, `/scrolle vers le bas`.
+
 ## Créer le `.exe` Windows
 
 ```bash
@@ -28,8 +45,8 @@ npm install
 npm run dist
 ```
 
-Le fichier d'installation sera généré dans `release/Semantic-AI-Browser-Setup-0.1.0.exe` quand la commande est exécutée sur Windows ou dans une CI compatible Windows.
+Le fichier d’installation est généré dans `release/Semantic-AI-Browser-Setup-0.1.0.exe` sur Windows ou dans le workflow GitHub Actions.
 
 ## Build GitHub Actions
 
-Le workflow `.github/workflows/windows-release.yml` construit l'installateur Windows et publie l'artefact téléchargeable pour chaque push ou pull request.
+Le workflow `.github/workflows/windows-release.yml` exécute `npm install`, `npm run lint`, `npm run dist` sur `windows-latest`, puis publie l’installateur `.exe` comme artefact.

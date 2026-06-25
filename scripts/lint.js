@@ -1,7 +1,14 @@
 const fs = require('fs');
 const path = require('path');
 
-const files = ['src/main.js', 'src/preload.js', 'src/renderer/app.js'];
+const files = [
+  'src/main.js',
+  'src/preload.js',
+  'src/renderer/app.js',
+  'src/renderer/voice-engine.js',
+  'src/webview/context-preload.js',
+  'src/workers/semantic-indexer.js'
+];
 let failed = false;
 for (const file of files) {
   const content = fs.readFileSync(path.join(process.cwd(), file), 'utf8');
