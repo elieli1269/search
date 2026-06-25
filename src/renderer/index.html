@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Semantic AI Browser</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <aside class="sidebar">
+      <div class="brand"><span class="orb"></span><div><strong>Semantic AI</strong><small>browser augmenté</small></div></div>
+      <button id="newTab">+ Nouvel espace</button>
+      <section><h2>Index sémantique</h2><div id="semanticIndex" class="index-list"></div></section>
+      <section><h2>Clés IA</h2><div id="keyList" class="key-list"></div><button id="openSettings">Paramètres</button></section>
+    </aside>
+
+    <main class="app-shell">
+      <header class="toolbar">
+        <button id="back">←</button><button id="forward">→</button><button id="reload">↻</button>
+        <input id="address" placeholder="Rechercher ou entrer une URL" />
+        <button id="go">Naviguer</button><button id="capture">Indexer cette page</button>
+      </header>
+      <section class="workspace">
+        <webview id="webview" src="https://www.wikipedia.org" allowpopups></webview>
+        <aside class="ai-panel">
+          <div class="panel-title"><h1>Copilote IA</h1><span id="pageSignal">non indexé</span></div>
+          <div class="quick-actions">
+            <button data-prompt="Résume cette page en 5 points actionnables.">Résumé</button>
+            <button data-prompt="Trouve les idées importantes, les risques et les opportunités de cette page.">Analyse</button>
+            <button data-prompt="Propose 6 recherches liées avec l’intention utilisateur associée.">Explorer</button>
+          </div>
+          <div id="chat" class="chat"></div>
+          <form id="askForm" class="ask-form"><textarea id="prompt" placeholder="Demande à l’IA de comparer, synthétiser, décider..."></textarea><button>Envoyer</button></form>
+        </aside>
+      </section>
+    </main>
+
+    <dialog id="settingsDialog">
+      <form method="dialog" class="settings-card">
+        <h2>Paramètres IA</h2>
+        <p>Ajoute une ou plusieurs clés Groq. Elles sont stockées localement sur ta machine et ne sont jamais écrites dans le dépôt Git.</p>
+        <label>Modèle Groq<input id="modelInput" value="llama-3.3-70b-versatile" /></label>
+        <label>Nom de la clé<input id="keyLabel" placeholder="Groq principale" /></label>
+        <label>Clé API<input id="keyValue" type="password" placeholder="gsk_..." /></label>
+        <menu><button id="saveSettings" value="default">Enregistrer</button><button value="cancel">Fermer</button></menu>
+      </form>
+    </dialog>
+    <script src="app.js"></script>
+  </body>
+</html>
