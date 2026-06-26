@@ -15,7 +15,8 @@ contextBridge.exposeInMainWorld('semanticBrowser', {
     list: () => ipcRenderer.invoke('pages:list')
   },
   quiz: {
-    generate: (payload) => ipcRenderer.invoke('quiz:generate', payload)
+    generate: (payload) => ipcRenderer.invoke('quiz:generate', payload),
+    flash: (payload) => ipcRenderer.invoke('quiz:flash', payload)
   },
   context: {
     update: (payload) => ipcRenderer.invoke('context:update', payload),

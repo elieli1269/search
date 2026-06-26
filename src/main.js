@@ -113,6 +113,17 @@ function getActiveKeyValue() {
   return active ? decryptSecret(active.secret) : '';
 }
 
+
+function parseJsonObject(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    const match = String(text || '').match(/\{[\s\S]*\}/);
+    if (!match) throw new Error('La réponse IA ne contient pas de JSON.');
+    return JSON.parse(match[0]);
+  }
+}
+
 async function groqChat(messages, options = {}) {
   const key = getActiveKeyValue();
   if (!key) throw new Error('Ajoute une clé API Groq dans Paramètres ou GROQ_API_KEY.');
@@ -272,6 +283,49 @@ ipcMain.handle('quiz:generate', async (_event, payload) => {
 
   const localQuiz = await runWorker('quiz', quizPayload);
   return { provider: 'local-fallback', url: endpoint, quiz: localQuiz, openUrl: endpoint };
+});
+
+
+ipcMain.handle('quiz:flash', async (_event, payload) => {
+  const fragment = String(payload?.fragment || '').trim();
+  if (fragment.length < 120) throw new Error('Fragment trop court pour un quiz contextuel.');
+
+  try {
+    const raw = await groqChat([
+      {
+        role: 'system',
+        content: 'Tu génères des quiz de révision. Réponds uniquement en JSON valide, sans markdown. Schéma: {"question":"...","options":[{"id":"A","text":"..."},{"id":"B","text":"..."},{"id":"C","text":"..."},{"id":"D","text":"..."}],"answer":"A","explanation":"..."}.'
+      },
+      {
+        role: 'user',
+        content: `À partir du fragment de cours suivant, génère une question difficile mais juste avec 4 options plausibles. Fragment:
+${fragment.slice(0, 2200)}`
+      }
+    ], { temperature: 0.15, maxTokens: 420 });
+    const quiz = parseJsonObject(raw);
+    return {
+      provider: 'groq',
+      fragment,
+      quiz: {
+        question: String(quiz.question || 'Question de révision'),
+        options: Array.isArray(quiz.options) ? quiz.options.slice(0, 4) : [],
+        answer: String(quiz.answer || 'A').toUpperCase().slice(0, 1),
+        explanation: String(quiz.explanation || '')
+      }
+    };
+  } catch {
+    const [fallback] = await runWorker('quiz', { course: fragment, questions: 1 });
+    return {
+      provider: 'local-fallback',
+      fragment,
+      quiz: {
+        question: fallback.question,
+        options: fallback.choices.map((text, index) => ({ id: String.fromCharCode(65 + index), text })),
+        answer: String.fromCharCode(65 + fallback.choices.indexOf(fallback.answer)),
+        explanation: fallback.explanation
+      }
+    };
+  }
 });
 
 ipcMain.handle('page:capture', async () => {

@@ -1,5 +1,6 @@
 const webview = document.querySelector('#webview');
 const address = document.querySelector('#address');
+const quickKey = document.querySelector('#quickKey');
 const shell = document.querySelector('.zero-shell');
 const stateLabel = document.querySelector('#stateLabel');
 const lastCommand = document.querySelector('#lastCommand');
@@ -76,7 +77,9 @@ function parseIntent(transcript) {
   if (lower.includes('scrolle') || lower.includes('descends')) return { type: 'scroll', direction: 'down' };
   if (lower.includes('remonte')) return { type: 'scroll', direction: 'up' };
   if (lower.includes('paramètre') || lower.includes('configuration')) return { type: 'settings' };
-  if (lower.includes('quiz') || lower.includes('qcm') || lower.includes('étudiant')) return { type: 'quiz' };
+  const answerMatch = lower.match(/(?:réponse|reponse|choix)\s*([abcd])/i);
+  if (answerMatch) return { type: 'quiz-answer', answer: answerMatch[1].toUpperCase() };
+  if (lower.includes('quiz') || lower.includes('qcm') || lower.includes('étudiant') || lower.includes('teste-moi') || lower.includes('test moi') || lower.includes('interroge-moi') || lower.includes('vérifie si')) return { type: 'quiz' };
   if (lower.includes('compare') || lower.includes('résume') || lower.includes('analyse') || lower.includes('trouve')) return { type: 'ask', prompt: transcript };
   return { type: 'ask', prompt: transcript };
 }
@@ -97,7 +100,11 @@ async function executeIntent(transcript) {
     return;
   }
   if (intent.type === 'quiz') {
-    await generateStudentQuiz();
+    await generateGhostQuiz('voice');
+    return;
+  }
+  if (intent.type === 'quiz-answer') {
+    webview.send('ghost-quiz-answer', intent.answer);
     return;
   }
   setMode('thinking', 'IA fusionne page, mémoire et intention…');
@@ -114,6 +121,21 @@ async function executeIntent(transcript) {
     setMode('idle', 'IA en veille contextuelle');
   }
 }
+
+quickKey.addEventListener('keydown', async (event) => {
+  if (event.key !== 'Enter') return;
+  const value = quickKey.value.trim();
+  if (!value) return;
+  try {
+    await window.semanticBrowser.keys.add({ label: 'Coffre Groq local', value });
+    quickKey.value = '';
+    quickKey.placeholder = 'Clé enregistrée localement';
+    await loadSettings();
+  } catch (error) {
+    quickKey.value = '';
+    quickKey.placeholder = error.message;
+  }
+});
 
 address.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') {
@@ -146,6 +168,25 @@ keyList.addEventListener('click', async (event) => {
   loadSettings();
 });
 
+
+async function generateGhostQuiz(trigger = 'manual', fragment = contextState?.activeFragment || contextState?.visibleText || '') {
+  setMode('thinking', trigger === 'attention' ? 'Aura éducative: quiz fantôme…' : 'Je prépare une question ciblée…');
+  try {
+    const result = await window.semanticBrowser.quiz.flash({
+      fragment,
+      sourceUrl: contextState?.url,
+      sourceTitle: contextState?.title,
+      trigger
+    });
+    webview.send('ghost-quiz', result);
+    quizWhisper.textContent = `${result.provider === 'groq' ? 'Quiz Groq' : 'Quiz local'} · fragment actif`;
+  } catch (error) {
+    webview.send('ghost-suggestion', `Impossible de créer le quiz fantôme: ${error.message}`);
+  } finally {
+    setMode('idle', experienceMode === 'student' ? 'Mode étudiant · Aura prête' : 'IA en veille contextuelle');
+  }
+}
+
 async function generateStudentQuiz() {
   setMode('thinking', 'QuizGen prépare un QCM étudiant…');
   try {
@@ -171,6 +212,10 @@ async function generateStudentQuiz() {
 
 webview.addEventListener('ipc-message', (event) => {
   if (event.channel === 'context-snapshot') updateContext(event.args[0]);
+  if (event.channel === 'active-content-stable' && experienceMode === 'student') generateGhostQuiz('attention', event.args[0].fragment);
+  if (event.channel === 'quiz-answer') {
+    quizWhisper.textContent = event.args[0].correct ? 'Réponse correcte · mémoire renforcée' : 'Réponse à revoir · explication affichée';
+  }
 });
 webview.addEventListener('did-navigate', (event) => { lastCommand.textContent = event.url; });
 

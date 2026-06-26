@@ -56,3 +56,11 @@ Le workflow `.github/workflows/windows-release.yml` exécute `npm install`, `npm
 La version étudiant se sélectionne dans **Paramètres invisibles → Version → Étudiant · QuizGen**. Dans ce mode, l’utilisateur peut dire ou taper `/génère un quiz` pour transformer le contexte visible de la page en QCM. L’intégration tente d’abord d’utiliser `https://quizzgen.alwaysdata.net`; si aucun endpoint JSON public n’est disponible, le navigateur ouvre le site QuizGen et génère un QCM local de secours à partir du worker sémantique.
 
 > Important: la clé Groq ne doit jamais être rendue visible dans le code public. Utilise `GROQ_API_KEY` ou l’écran local des paramètres.
+
+## Aura Contextuelle Éducative
+
+En mode **Étudiant · QuizGen**, le navigateur suit le bloc textuel central du viewport avec un suivi d’attention local. Si l’utilisateur reste plus de 45 secondes sur un fragment informatif, l’Aura peut déclencher un quiz fantôme sans bouton. L’utilisateur peut aussi dire ou taper `/teste-moi`, `/interroge-moi` ou `/fais-moi un quiz sur cette page`.
+
+Le quiz est généré à partir du fragment actuellement regardé, pas depuis toute la page, afin de réduire la latence et d’éviter d’envoyer trop de contexte. Si Groq est configuré, `quiz:flash` demande un JSON strict avec une question QCM et une explication. Sinon, le worker sémantique local crée un QCM de secours. La réponse peut se faire au clic dans le Shadow DOM ou à la voix avec une phrase comme `réponse B`.
+
+La barre Zero‑UI contient aussi un champ **Clé Groq locale**. Appuie sur Entrée après collage: la clé est enregistrée durablement dans le stockage local Electron, chiffrée avec `safeStorage` lorsque la plateforme le permet, mais elle n’est jamais écrite dans le code source.
