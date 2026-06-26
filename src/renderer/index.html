@@ -19,6 +19,7 @@
       <section class="ghost-console" id="ghostConsole" aria-live="polite">
         <div id="lastCommand">Dis “va sur…”, “compare…”, “trouve…” ou “scrolle…”</div>
         <div id="memoryWhisper"></div>
+        <div id="quizWhisper"></div>
       </section>
     </main>
 
@@ -28,6 +29,8 @@
         <p>Les clés Groq restent locales. Utilise aussi <code>GROQ_API_KEY</code> pour éviter tout stockage applicatif.</p>
         <label>Modèle raisonnement Groq<input id="modelInput" value="llama-3.3-70b-versatile" /></label>
         <label>Modèle transcription<input id="transcriptionModelInput" value="whisper-large-v3-turbo" /></label>
+        <label>Version<select id="experienceModeInput"><option value="explorer">Explorateur</option><option value="student">Étudiant · QuizGen</option></select></label>
+        <label>URL QuizGen<input id="quizGenEndpointInput" value="https://quizzgen.alwaysdata.net" /></label>
         <label>Nom de la clé<input id="keyLabel" placeholder="Groq principale" /></label>
         <label>Clé API<input id="keyValue" type="password" placeholder="gsk_..." /></label>
         <div id="keyList" class="key-list"></div>

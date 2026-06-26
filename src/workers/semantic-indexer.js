@@ -54,6 +54,25 @@ function enrichFragment({ context, pages }) {
   };
 }
 
+
+function generateQuiz({ course, questions }) {
+  const sentences = String(course || '').replace(/\s+/g, ' ').split(/(?<=[.!?])\s+/).filter((sentence) => sentence.length > 60);
+  const keywords = keywordsFrom(course, 24);
+  const count = Math.max(3, Math.min(Number(questions || 5), 12));
+  return Array.from({ length: count }, (_, index) => {
+    const basis = sentences[index % Math.max(sentences.length, 1)] || String(course).slice(0, 220);
+    const answer = keywords[index % Math.max(keywords.length, 1)] || 'concept clé';
+    const distractors = keywords.filter((word) => word !== answer).slice(index, index + 3);
+    while (distractors.length < 3) distractors.push(['définition', 'exemple', 'contexte'][distractors.length]);
+    return {
+      question: `Quel concept résume le mieux cet extrait: « ${basis.slice(0, 150)}… » ?`,
+      choices: [answer, ...distractors].sort(),
+      answer,
+      explanation: `La réponse est liée aux signaux dominants détectés dans le cours: ${keywords.slice(0, 6).join(', ')}.`
+    };
+  });
+}
+
 function match({ query, pages }) {
   const queryVector = vectorize(query);
   return (pages || [])
@@ -65,7 +84,7 @@ function match({ query, pages }) {
 
 parentPort.on('message', (message) => {
   try {
-    const payload = message.type === 'enrich-fragment' ? enrichFragment(message.payload) : match(message.payload);
+    const payload = message.type === 'enrich-fragment' ? enrichFragment(message.payload) : message.type === 'quiz' ? generateQuiz(message.payload) : match(message.payload);
     parentPort.postMessage({ jobId: message.jobId, payload });
   } catch (error) {
     parentPort.postMessage({ jobId: message.jobId, error: error.message });

@@ -4,6 +4,8 @@ const shell = document.querySelector('.zero-shell');
 const stateLabel = document.querySelector('#stateLabel');
 const lastCommand = document.querySelector('#lastCommand');
 const memoryWhisper = document.querySelector('#memoryWhisper');
+const quizWhisper = document.querySelector('#quizWhisper');
+let experienceMode = 'explorer';
 const settingsDialog = document.querySelector('#settingsDialog');
 const keyList = document.querySelector('#keyList');
 let contextState = null;
@@ -31,6 +33,10 @@ async function loadSettings() {
   const settings = await window.semanticBrowser.settings.get();
   document.querySelector('#modelInput').value = settings.groqModel;
   document.querySelector('#transcriptionModelInput').value = settings.transcriptionModel;
+  document.querySelector('#experienceModeInput').value = settings.experienceMode || 'explorer';
+  document.querySelector('#quizGenEndpointInput').value = settings.quizGenEndpoint || 'https://quizzgen.alwaysdata.net';
+  experienceMode = settings.experienceMode || 'explorer';
+  quizWhisper.textContent = experienceMode === 'student' ? 'Mode étudiant actif · dis “génère un quiz”.' : '';
   keyList.innerHTML = settings.envKeyAvailable ? '<small>GROQ_API_KEY détectée dans l’environnement.</small>' : '';
   keyList.innerHTML += settings.apiKeys.map((key) => `
     <article class="key-card"><strong>${escapeHtml(key.label)}</strong><br><small>${key.masked} ${key.encrypted ? '· chiffrée' : '· locale'}</small><br>
@@ -70,6 +76,7 @@ function parseIntent(transcript) {
   if (lower.includes('scrolle') || lower.includes('descends')) return { type: 'scroll', direction: 'down' };
   if (lower.includes('remonte')) return { type: 'scroll', direction: 'up' };
   if (lower.includes('paramètre') || lower.includes('configuration')) return { type: 'settings' };
+  if (lower.includes('quiz') || lower.includes('qcm') || lower.includes('étudiant')) return { type: 'quiz' };
   if (lower.includes('compare') || lower.includes('résume') || lower.includes('analyse') || lower.includes('trouve')) return { type: 'ask', prompt: transcript };
   return { type: 'ask', prompt: transcript };
 }
@@ -87,6 +94,10 @@ async function executeIntent(transcript) {
   }
   if (intent.type === 'settings') {
     settingsDialog.showModal();
+    return;
+  }
+  if (intent.type === 'quiz') {
+    await generateStudentQuiz();
     return;
   }
   setMode('thinking', 'IA fusionne page, mémoire et intention…');
@@ -118,7 +129,9 @@ document.querySelector('#saveSettings').addEventListener('click', async (event) 
   event.preventDefault();
   await window.semanticBrowser.settings.setModels({
     groqModel: document.querySelector('#modelInput').value,
-    transcriptionModel: document.querySelector('#transcriptionModelInput').value
+    transcriptionModel: document.querySelector('#transcriptionModelInput').value,
+    experienceMode: document.querySelector('#experienceModeInput').value,
+    quizGenEndpoint: document.querySelector('#quizGenEndpointInput').value
   });
   const value = document.querySelector('#keyValue').value.trim();
   if (value) await window.semanticBrowser.keys.add({ label: document.querySelector('#keyLabel').value, value });
@@ -132,6 +145,29 @@ keyList.addEventListener('click', async (event) => {
   if (event.target.dataset.remove) await window.semanticBrowser.keys.remove(event.target.dataset.remove);
   loadSettings();
 });
+
+async function generateStudentQuiz() {
+  setMode('thinking', 'QuizGen prépare un QCM étudiant…');
+  try {
+    const text = contextState?.visibleText || '';
+    const result = await window.semanticBrowser.quiz.generate({
+      course: text,
+      mode: 'qcm',
+      questions: 5,
+      sourceUrl: contextState?.url,
+      sourceTitle: contextState?.title
+    });
+    const quiz = Array.isArray(result.quiz) ? result.quiz : result.quiz?.questions || result.quiz;
+    const rendered = Array.isArray(quiz) ? quiz.map((item, index) => `${index + 1}. ${item.question}\nRéponse: ${item.answer}`).join('\n\n') : String(quiz).slice(0, 1200);
+    quizWhisper.textContent = `${result.provider === 'quizzgen' ? 'QuizGen' : 'Quiz local'} · ${result.openUrl ? 'site disponible' : 'généré'} `;
+    webview.send('ghost-suggestion', `Quiz étudiant prêt:\n${rendered}`);
+    if (result.openUrl) window.semanticBrowser.external.open(result.openUrl);
+  } catch (error) {
+    webview.send('ghost-suggestion', `Impossible de générer le quiz: ${error.message}`);
+  } finally {
+    setMode('idle', experienceMode === 'student' ? 'Mode étudiant · prêt pour QuizGen' : 'IA en veille contextuelle');
+  }
+}
 
 webview.addEventListener('ipc-message', (event) => {
   if (event.channel === 'context-snapshot') updateContext(event.args[0]);

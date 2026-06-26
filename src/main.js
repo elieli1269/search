@@ -8,6 +8,8 @@ const store = new Store({
   defaults: {
     groqModel: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
     transcriptionModel: process.env.GROQ_TRANSCRIPTION_MODEL || 'whisper-large-v3-turbo',
+    experienceMode: 'explorer',
+    quizGenEndpoint: process.env.QUIZZGEN_ENDPOINT || 'https://quizzgen.alwaysdata.net',
     apiKeys: [],
     activeApiKeyId: null,
     pages: [],
@@ -140,12 +142,16 @@ ipcMain.handle('settings:get', () => ({
   transcriptionModel: store.get('transcriptionModel'),
   apiKeys: store.get('apiKeys', []).map(safeKeyDescriptor),
   activeApiKeyId: store.get('activeApiKeyId'),
-  envKeyAvailable: Boolean(process.env.GROQ_API_KEY)
+  envKeyAvailable: Boolean(process.env.GROQ_API_KEY),
+  experienceMode: store.get('experienceMode'),
+  quizGenEndpoint: store.get('quizGenEndpoint')
 }));
 
 ipcMain.handle('settings:set-models', (_event, payload) => {
   store.set('groqModel', String(payload?.groqModel || '').trim() || 'llama-3.3-70b-versatile');
   store.set('transcriptionModel', String(payload?.transcriptionModel || '').trim() || 'whisper-large-v3-turbo');
+  store.set('experienceMode', ['explorer', 'student'].includes(payload?.experienceMode) ? payload.experienceMode : 'explorer');
+  store.set('quizGenEndpoint', String(payload?.quizGenEndpoint || '').trim() || 'https://quizzgen.alwaysdata.net');
   return { ok: true };
 });
 
@@ -232,6 +238,40 @@ ipcMain.handle('voice:transcribe', async (_event, audioPayload) => {
   if (!response.ok) throw new Error(`Transcription Groq ${response.status}: ${(await response.text()).slice(0, 200)}`);
   const data = await response.json();
   return data.text || '';
+});
+
+ipcMain.handle('quiz:generate', async (_event, payload) => {
+  const course = String(payload?.course || '').trim();
+  if (course.length < 80) throw new Error('Le cours est trop court pour générer un quiz utile.');
+  const endpoint = store.get('quizGenEndpoint') || 'https://quizzgen.alwaysdata.net';
+  const quizPayload = {
+    course: course.slice(0, 12000),
+    mode: payload?.mode || 'qcm',
+    questions: Number(payload?.questions || 5),
+    sourceUrl: payload?.sourceUrl || '',
+    sourceTitle: payload?.sourceTitle || ''
+  };
+
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(quizPayload)
+    });
+    if (response.ok) {
+      const text = await response.text();
+      try {
+        return { provider: 'quizzgen', url: endpoint, quiz: JSON.parse(text) };
+      } catch {
+        return { provider: 'quizzgen', url: endpoint, quiz: text };
+      }
+    }
+  } catch {
+    // The public site may not expose a JSON API; fall back to a local deterministic quiz.
+  }
+
+  const localQuiz = await runWorker('quiz', quizPayload);
+  return { provider: 'local-fallback', url: endpoint, quiz: localQuiz, openUrl: endpoint };
 });
 
 ipcMain.handle('page:capture', async () => {

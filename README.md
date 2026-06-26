@@ -50,3 +50,9 @@ Le fichier d’installation est généré dans `release/Semantic-AI-Browser-Setu
 ## Build GitHub Actions
 
 Le workflow `.github/workflows/windows-release.yml` exécute `npm install`, `npm run lint`, `npm run dist` sur `windows-latest`, puis publie l’installateur `.exe` comme artefact.
+
+## Mode étudiant et QuizGen
+
+La version étudiant se sélectionne dans **Paramètres invisibles → Version → Étudiant · QuizGen**. Dans ce mode, l’utilisateur peut dire ou taper `/génère un quiz` pour transformer le contexte visible de la page en QCM. L’intégration tente d’abord d’utiliser `https://quizzgen.alwaysdata.net`; si aucun endpoint JSON public n’est disponible, le navigateur ouvre le site QuizGen et génère un QCM local de secours à partir du worker sémantique.
+
+> Important: la clé Groq ne doit jamais être rendue visible dans le code public. Utilise `GROQ_API_KEY` ou l’écran local des paramètres.
