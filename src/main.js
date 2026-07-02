@@ -12,6 +12,7 @@ const store = new Store({
     quizGenEndpoint: process.env.QUIZZGEN_ENDPOINT || 'https://quizzgen.alwaysdata.net',
     privacyMode: false,
     apiKeys: [],
+    vaultItems: [],
     activeApiKeyId: null,
     pages: [],
     contextState: {
@@ -102,6 +103,27 @@ function safeKeyDescriptor(key) {
     createdAt: key.createdAt,
     masked: value ? `${value.slice(0, 6)}••••${value.slice(-4)}` : '',
     encrypted: key.secret?.scheme === 'safeStorage'
+  };
+}
+
+
+function safeVaultDescriptor(item) {
+  let payload = {};
+  try {
+    payload = JSON.parse(decryptSecret(item.secret) || '{}');
+  } catch {
+    payload = {};
+  }
+  const password = payload.password || payload.value || '';
+  return {
+    id: item.id,
+    label: item.label,
+    username: payload.username || '',
+    url: payload.url || '',
+    note: payload.note || '',
+    masked: password ? `${String(password).slice(0, 2)}••••${String(password).slice(-2)}` : '',
+    encrypted: item.secret?.scheme === 'safeStorage',
+    createdAt: item.createdAt
   };
 }
 
@@ -199,6 +221,32 @@ ipcMain.handle('keys:remove', (_event, id) => {
 });
 
 ipcMain.handle('pages:list', () => store.get('pages', []));
+
+ipcMain.handle('vault:list', () => store.get('vaultItems', []).map(safeVaultDescriptor));
+
+ipcMain.handle('vault:add', (_event, payload) => {
+  const value = String(payload?.password || payload?.value || '').trim();
+  if (!value) throw new Error('Ajoute un mot de passe, une clé ou un secret à enregistrer.');
+  const vaultItems = store.get('vaultItems', []);
+  const item = {
+    id: `vault_${Date.now()}`,
+    label: String(payload?.label || `Secret ${vaultItems.length + 1}`).trim(),
+    secret: encryptSecret(JSON.stringify({
+      username: String(payload?.username || '').trim(),
+      password: value,
+      url: String(payload?.url || '').trim(),
+      note: String(payload?.note || '').trim()
+    })),
+    createdAt: new Date().toISOString()
+  };
+  store.set('vaultItems', [item, ...vaultItems].slice(0, 100));
+  return safeVaultDescriptor(item);
+});
+
+ipcMain.handle('vault:remove', (_event, id) => {
+  store.set('vaultItems', store.get('vaultItems', []).filter((item) => item.id !== id));
+  return { ok: true };
+});
 
 ipcMain.handle('context:update', async (_event, context) => {
   const pages = store.get('pages', []);

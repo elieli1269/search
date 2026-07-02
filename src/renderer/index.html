@@ -9,9 +9,11 @@
   <body>
     <main class="zero-shell" data-mode="idle">
       <section class="omnibox" aria-label="Interface vocale et recherche">
-        <button class="brand-orb" id="voiceButton" type="button" title="Appuie pour parler" aria-label="Appuie pour parler"><span></span></button>
+        <button class="nav-arrow" id="backButton" type="button" title="Retour" aria-label="Retour">‹</button>
+        <button class="nav-arrow" id="forwardButton" type="button" title="Avancer" aria-label="Avancer">›</button>
+        <button class="brand-orb" id="voiceButton" type="button" title="Appuie pour parler puis Entrée pour envoyer" aria-label="Appuie pour parler puis Entrée pour envoyer"><span></span></button>
         <input id="address" placeholder="Colle une URL, décris ton intention ou appuie sur le micro…" />
-        <div id="stateLabel">IA en veille contextuelle</div><div id="voiceTimer" aria-live="polite"></div>
+        <div id="stateLabel">IA en veille contextuelle</div><div id="voiceTimer" aria-live="polite"></div><button id="pageQuizButton" type="button">Quiz</button>
         <input id="quickKey" type="password" placeholder="Clé Groq locale" />
       </section>
 
@@ -26,6 +28,15 @@
       </section>
     </main>
 
+    <dialog id="quizDialog" class="center-dialog">
+      <article class="quiz-card">
+        <button id="closeQuizDialog" class="close" type="button" aria-label="Fermer">×</button>
+        <p class="eyebrow">Quiz de la page</p>
+        <h2>Révision instantanée</h2>
+        <div id="pageQuizContent"></div>
+      </article>
+    </dialog>
+
     <dialog id="settingsDialog">
       <form method="dialog" class="settings-card">
         <h2>Paramètres invisibles</h2>
@@ -37,6 +48,15 @@
         <label class="check-row"><input id="privacyModeInput" type="checkbox" /> Mode privé IA: pas d’indexation, pas de quiz automatique, contexte minimal</label>
         <label>Nom de la clé<input id="keyLabel" placeholder="Groq principale" /></label>
         <label>Clé API<input id="keyValue" type="password" placeholder="gsk_..." /></label>
+        <fieldset class="vault-box">
+          <legend>Coffre local chiffré</legend>
+          <label>Nom<input id="vaultLabel" placeholder="ENT, mail, API secondaire…" /></label>
+          <label>Identifiant<input id="vaultUsername" placeholder="email ou login" /></label>
+          <label>Mot de passe / secret<input id="vaultPassword" type="password" placeholder="mot de passe, token, clé…" /></label>
+          <label>URL / note<input id="vaultUrl" placeholder="site ou note rapide" /></label>
+          <button id="saveVaultItem" type="button">Enregistrer dans le coffre</button>
+          <div id="vaultList" class="key-list"></div>
+        </fieldset>
         <div id="keyList" class="key-list"></div>
         <menu><button id="saveSettings" value="default">Enregistrer</button><button value="cancel">Fermer</button></menu>
       </form>

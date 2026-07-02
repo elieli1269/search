@@ -2,6 +2,9 @@ const webview = document.querySelector('#webview');
 const address = document.querySelector('#address');
 const quickKey = document.querySelector('#quickKey');
 const voiceButton = document.querySelector('#voiceButton');
+const backButton = document.querySelector('#backButton');
+const forwardButton = document.querySelector('#forwardButton');
+const pageQuizButton = document.querySelector('#pageQuizButton');
 const shell = document.querySelector('.zero-shell');
 const stateLabel = document.querySelector('#stateLabel');
 const lastCommand = document.querySelector('#lastCommand');
@@ -15,6 +18,9 @@ let privacyMode = false;
 const historyEntries = [];
 const settingsDialog = document.querySelector('#settingsDialog');
 const keyList = document.querySelector('#keyList');
+const vaultList = document.querySelector('#vaultList');
+const quizDialog = document.querySelector('#quizDialog');
+const pageQuizContent = document.querySelector('#pageQuizContent');
 let contextState = null;
 let ghostTimer = null;
 
@@ -56,6 +62,25 @@ function updateVoiceTimer({ elapsedMs = 0, maxDurationMs = 20000, recording = fa
   voiceTimer.textContent = `${Math.ceil(elapsedMs / 1000)}s / ${Math.ceil(maxDurationMs / 1000)}s`;
 }
 
+function renderPageQuiz(result) {
+  const quiz = Array.isArray(result.quiz) ? result.quiz : result.quiz?.questions || result.quiz;
+  const items = Array.isArray(quiz) ? quiz : [quiz];
+  pageQuizContent.innerHTML = items.map((item, index) => {
+    if (typeof item === 'string') return `<pre>${escapeHtml(item.slice(0, 1600))}</pre>`;
+    const choices = item.choices || item.options || [];
+    const choicesHtml = Array.isArray(choices) ? choices.map((choice) => `<li>${escapeHtml(choice.text || choice)}</li>`).join('') : '';
+    return `<section class="page-quiz-item"><h3>${index + 1}. ${escapeHtml(item.question || 'Question')}</h3><ol>${choicesHtml}</ol><p><strong>Réponse:</strong> ${escapeHtml(item.answer || '')}</p><p>${escapeHtml(item.explanation || '')}</p></section>`;
+  }).join('');
+  quizDialog.showModal();
+}
+
+async function loadVault() {
+  const items = await window.semanticBrowser.vault.list();
+  vaultList.innerHTML = items.map((item) => `
+    <article class="key-card"><strong>${escapeHtml(item.label)}</strong><br><small>${escapeHtml(item.username || 'sans identifiant')} · ${escapeHtml(item.masked)} ${item.encrypted ? '· chiffré' : '· local'}</small><br><small>${escapeHtml(item.url || item.note || '')}</small><br>
+    <button data-vault-remove="${item.id}">Supprimer</button></article>`).join('') || '<small>Coffre vide. Les secrets restent sur cette machine.</small>';
+}
+
 async function loadSettings() {
   const settings = await window.semanticBrowser.settings.get();
   document.querySelector('#modelInput').value = settings.groqModel;
@@ -72,6 +97,7 @@ async function loadSettings() {
     <article class="key-card"><strong>${escapeHtml(key.label)}</strong><br><small>${key.masked} ${key.encrypted ? '· chiffrée' : '· locale'}</small><br>
     <button data-activate="${key.id}">${settings.activeApiKeyId === key.id ? 'Active' : 'Activer'}</button>
     <button data-remove="${key.id}">Supprimer</button></article>`).join('') || '<small>Aucune clé locale configurée.</small>';
+  await loadVault();
 }
 
 async function configureRuntime() {
@@ -204,6 +230,28 @@ keyList.addEventListener('click', async (event) => {
   loadSettings();
 });
 
+vaultList.addEventListener('click', async (event) => {
+  if (!event.target.dataset.vaultRemove) return;
+  await window.semanticBrowser.vault.remove(event.target.dataset.vaultRemove);
+  await loadVault();
+});
+
+document.querySelector('#saveVaultItem').addEventListener('click', async () => {
+  await window.semanticBrowser.vault.add({
+    label: document.querySelector('#vaultLabel').value,
+    username: document.querySelector('#vaultUsername').value,
+    password: document.querySelector('#vaultPassword').value,
+    url: document.querySelector('#vaultUrl').value
+  });
+  ['#vaultLabel', '#vaultUsername', '#vaultPassword', '#vaultUrl'].forEach((selector) => { document.querySelector(selector).value = ''; });
+  await loadVault();
+});
+
+backButton.addEventListener('click', () => { if (webview.canGoBack()) webview.goBack(); });
+forwardButton.addEventListener('click', () => { if (webview.canGoForward()) webview.goForward(); });
+pageQuizButton.addEventListener('click', () => generateStudentQuiz());
+document.querySelector('#closeQuizDialog').addEventListener('click', () => quizDialog.close());
+
 
 async function generateGhostQuiz(trigger = 'manual', fragment = contextState?.activeFragment || contextState?.visibleText || '') {
   if (privacyMode) {
@@ -244,9 +292,9 @@ async function generateStudentQuiz() {
     });
     const quiz = Array.isArray(result.quiz) ? result.quiz : result.quiz?.questions || result.quiz;
     const rendered = Array.isArray(quiz) ? quiz.map((item, index) => `${index + 1}. ${item.question}\nRéponse: ${item.answer}`).join('\n\n') : String(quiz).slice(0, 1200);
-    quizWhisper.textContent = `${result.provider === 'quizzgen' ? 'QuizGen' : 'Quiz local'} · ${result.openUrl ? 'site disponible' : 'généré'} `;
-    webview.send('ghost-suggestion', `Quiz étudiant prêt:\n${rendered}`);
-    if (result.openUrl) window.semanticBrowser.external.open(result.openUrl);
+    quizWhisper.textContent = `${result.provider === 'quizzgen' ? 'QuizGen' : 'Quiz local'} · fenêtre centrale`;
+    renderPageQuiz(result);
+    webview.send('ghost-suggestion', `Quiz étudiant prêt dans la fenêtre centrale.\n${rendered}`);
   } catch (error) {
     webview.send('ghost-suggestion', `Impossible de générer le quiz: ${error.message}`);
   } finally {
@@ -268,7 +316,7 @@ configureRuntime().then(loadSettings).then(() => {
     onTranscript: executeIntent,
     onTick: updateVoiceTimer,
     onState: (state) => {
-      const label = state === 'listening' ? 'Micro actif · relâche pour envoyer · Échap annule' : state === 'thinking' ? 'Je transcris…' : 'IA en veille · micro coupé';
+      const label = state === 'listening' ? 'Micro actif · Entrée envoie · Échap annule' : state === 'thinking' ? 'Je transcris…' : 'IA en veille · micro coupé';
       setMode(state, label);
       voiceButton.setAttribute('aria-pressed', state === 'listening' ? 'true' : 'false');
     }
@@ -283,19 +331,21 @@ configureRuntime().then(loadSettings).then(() => {
     }
   };
 
-  voiceButton.addEventListener('pointerdown', (event) => {
-    event.preventDefault();
-    startVoice();
-  });
-  voiceButton.addEventListener('pointerup', () => voice.stopPushToTalk());
-  voiceButton.addEventListener('pointerleave', () => voice.stopPushToTalk());
-  voiceButton.addEventListener('click', async (event) => {
-    if (event.detail !== 0) return;
-    if (voice.recording) voice.stopPushToTalk();
-    else await startVoice();
+  voiceButton.addEventListener('click', async () => {
+    if (!voice.recording) await startVoice();
   });
 
   window.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && voice.recording) {
+      event.preventDefault();
+      voice.stopPushToTalk();
+      return;
+    }
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'q') {
+      event.preventDefault();
+      generateStudentQuiz();
+      return;
+    }
     if (event.key === 'Escape') {
       voice.cancelPushToTalk();
       updateVoiceTimer();
@@ -307,11 +357,5 @@ configureRuntime().then(loadSettings).then(() => {
       startVoice();
     }
   });
-  window.addEventListener('keyup', (event) => {
-    if ((event.ctrlKey || event.metaKey) && event.code === 'Space') {
-      event.preventDefault();
-      voice.stopPushToTalk();
-    }
-  });
-  setMode('idle', 'IA en veille · maintiens le micro ou Ctrl+Espace pour parler');
+  setMode('idle', 'IA en veille · appuie micro, Entrée pour envoyer · Ctrl+Q quiz');
 });
