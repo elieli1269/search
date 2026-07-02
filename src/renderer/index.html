@@ -9,8 +9,8 @@
   <body>
     <main class="zero-shell" data-mode="idle">
       <section class="omnibox" aria-label="Interface vocale et recherche">
-        <div class="brand-orb" id="voiceOrb"><span></span></div>
-        <input id="address" placeholder="Parle, colle une URL ou décris ton intention…" />
+        <button class="brand-orb" id="voiceButton" type="button" title="Appuie pour parler" aria-label="Appuie pour parler"><span></span></button>
+        <input id="address" placeholder="Colle une URL, décris ton intention ou appuie sur le micro…" />
         <div id="stateLabel">IA en veille contextuelle</div>
         <input id="quickKey" type="password" placeholder="Clé Groq locale" />
       </section>
@@ -18,7 +18,7 @@
       <webview id="webview" allowpopups></webview>
 
       <section class="ghost-console" id="ghostConsole" aria-live="polite">
-        <div id="lastCommand">Dis “va sur…”, “compare…”, “trouve…” ou “scrolle…”</div>
+        <div id="lastCommand">Appuie sur le micro puis dis “va sur…”, “compare…”, “trouve…” ou “scrolle…”</div>
         <div id="memoryWhisper"></div>
         <div id="quizWhisper"></div>
       </section>

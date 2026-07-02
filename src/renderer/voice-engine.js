@@ -3,54 +3,50 @@ class VoiceIntentEngine {
     this.onTranscript = onTranscript;
     this.onState = onState;
     this.mediaRecorder = null;
-    this.audioContext = null;
-    this.analyser = null;
+    this.stream = null;
     this.chunks = [];
-    this.speaking = false;
-    this.silenceFrames = 0;
+    this.recording = false;
+    this.maxTimer = null;
   }
 
-  async start() {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: false });
-    this.audioContext = new AudioContext();
-    const source = this.audioContext.createMediaStreamSource(stream);
-    this.analyser = this.audioContext.createAnalyser();
-    this.analyser.fftSize = 1024;
-    source.connect(this.analyser);
-    this.mediaRecorder = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : undefined });
-    this.mediaRecorder.ondataavailable = (event) => { if (event.data.size) this.chunks.push(event.data); };
+  async startPushToTalk() {
+    if (this.recording) return;
+    this.stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true },
+      video: false
+    });
+    this.chunks = [];
+    this.mediaRecorder = new MediaRecorder(this.stream, {
+      mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : undefined
+    });
+    this.mediaRecorder.ondataavailable = (event) => {
+      if (event.data.size) this.chunks.push(event.data);
+    };
     this.mediaRecorder.onstop = () => this.flush();
-    this.loop();
+    this.mediaRecorder.start(250);
+    this.recording = true;
+    this.onState('listening');
+    this.maxTimer = setTimeout(() => this.stopPushToTalk(), 20000);
   }
 
-  loop() {
-    const data = new Uint8Array(this.analyser.frequencyBinCount);
-    this.analyser.getByteFrequencyData(data);
-    const energy = data.reduce((sum, value) => sum + value, 0) / data.length;
+  stopPushToTalk() {
+    if (!this.recording || !this.mediaRecorder) return;
+    this.recording = false;
+    clearTimeout(this.maxTimer);
+    this.onState('thinking');
+    this.mediaRecorder.stop();
+  }
 
-    if (energy > 18 && !this.speaking) {
-      this.speaking = true;
-      this.silenceFrames = 0;
-      this.chunks = [];
-      this.mediaRecorder.start(250);
-      this.onState('listening');
-    } else if (this.speaking && energy < 10) {
-      this.silenceFrames += 1;
-      if (this.silenceFrames > 28) {
-        this.speaking = false;
-        this.mediaRecorder.stop();
-        this.onState('thinking');
-      }
-    } else if (this.speaking) {
-      this.silenceFrames = 0;
-    }
-
-    requestAnimationFrame(() => this.loop());
+  togglePushToTalk() {
+    if (this.recording) this.stopPushToTalk();
+    else this.startPushToTalk();
   }
 
   async flush() {
+    const mimeType = this.mediaRecorder?.mimeType || 'audio/webm';
+    this.stopStream();
     if (!this.chunks.length) return this.onState('idle');
-    const blob = new Blob(this.chunks, { type: this.mediaRecorder.mimeType || 'audio/webm' });
+    const blob = new Blob(this.chunks, { type: mimeType });
     const base64 = await this.blobToBase64(blob);
     try {
       const text = await window.semanticBrowser.voice.transcribe({ base64, mimeType: blob.type });
@@ -60,6 +56,12 @@ class VoiceIntentEngine {
     } finally {
       this.onState('idle');
     }
+  }
+
+  stopStream() {
+    if (this.stream) this.stream.getTracks().forEach((track) => track.stop());
+    this.stream = null;
+    this.mediaRecorder = null;
   }
 
   blobToBase64(blob) {

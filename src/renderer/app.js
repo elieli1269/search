@@ -1,6 +1,7 @@
 const webview = document.querySelector('#webview');
 const address = document.querySelector('#address');
 const quickKey = document.querySelector('#quickKey');
+const voiceButton = document.querySelector('#voiceButton');
 const shell = document.querySelector('.zero-shell');
 const stateLabel = document.querySelector('#stateLabel');
 const lastCommand = document.querySelector('#lastCommand');
@@ -37,7 +38,7 @@ async function loadSettings() {
   document.querySelector('#experienceModeInput').value = settings.experienceMode || 'explorer';
   document.querySelector('#quizGenEndpointInput').value = settings.quizGenEndpoint || 'https://quizzgen.alwaysdata.net';
   experienceMode = settings.experienceMode || 'explorer';
-  quizWhisper.textContent = experienceMode === 'student' ? 'Mode étudiant actif · dis “génère un quiz”.' : '';
+  quizWhisper.textContent = experienceMode === 'student' ? 'Mode étudiant actif · appuie sur le micro puis dis “génère un quiz”.' : '';
   keyList.innerHTML = settings.envKeyAvailable ? '<small>GROQ_API_KEY détectée dans l’environnement.</small>' : '';
   keyList.innerHTML += settings.apiKeys.map((key) => `
     <article class="key-card"><strong>${escapeHtml(key.label)}</strong><br><small>${key.masked} ${key.encrypted ? '· chiffrée' : '· locale'}</small><br>
@@ -219,15 +220,22 @@ webview.addEventListener('ipc-message', (event) => {
 });
 webview.addEventListener('did-navigate', (event) => { lastCommand.textContent = event.url; });
 
-configureRuntime().then(loadSettings).then(async () => {
-  try {
-    const voice = new window.VoiceIntentEngine({
-      onTranscript: executeIntent,
-      onState: (state) => setMode(state, state === 'listening' ? 'J’écoute…' : state === 'thinking' ? 'Je réfléchis…' : 'IA en veille contextuelle')
-    });
-    await voice.start();
-  } catch (error) {
-    setMode('idle', 'Micro indisponible · utilise /commande');
-    lastCommand.textContent = `Voix désactivée: ${error.message}`;
-  }
+configureRuntime().then(loadSettings).then(() => {
+  const voice = new window.VoiceIntentEngine({
+    onTranscript: executeIntent,
+    onState: (state) => {
+      const label = state === 'listening' ? 'Micro actif · réappuie pour envoyer' : state === 'thinking' ? 'Je transcris…' : 'IA en veille · micro coupé';
+      setMode(state, label);
+      voiceButton.setAttribute('aria-pressed', state === 'listening' ? 'true' : 'false');
+    }
+  });
+  voiceButton.addEventListener('click', async () => {
+    try {
+      await voice.togglePushToTalk();
+    } catch (error) {
+      setMode('idle', 'Micro indisponible · utilise /commande');
+      lastCommand.textContent = `Voix désactivée: ${error.message}`;
+    }
+  });
+  setMode('idle', 'IA en veille · appuie sur le micro pour parler');
 });
