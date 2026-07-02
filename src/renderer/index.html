@@ -11,7 +11,7 @@
       <section class="omnibox" aria-label="Interface vocale et recherche">
         <button class="brand-orb" id="voiceButton" type="button" title="Appuie pour parler" aria-label="Appuie pour parler"><span></span></button>
         <input id="address" placeholder="Colle une URL, décris ton intention ou appuie sur le micro…" />
-        <div id="stateLabel">IA en veille contextuelle</div>
+        <div id="stateLabel">IA en veille contextuelle</div><div id="voiceTimer" aria-live="polite"></div>
         <input id="quickKey" type="password" placeholder="Clé Groq locale" />
       </section>
 
@@ -21,6 +21,8 @@
         <div id="lastCommand">Appuie sur le micro puis dis “va sur…”, “compare…”, “trouve…” ou “scrolle…”</div>
         <div id="memoryWhisper"></div>
         <div id="quizWhisper"></div>
+        <div id="privacyDashboard"></div>
+        <div id="commandHistory"></div>
       </section>
     </main>
 
@@ -32,6 +34,7 @@
         <label>Modèle transcription<input id="transcriptionModelInput" value="whisper-large-v3-turbo" /></label>
         <label>Version<select id="experienceModeInput"><option value="explorer">Explorateur</option><option value="student">Étudiant · QuizGen</option></select></label>
         <label>URL QuizGen<input id="quizGenEndpointInput" value="https://quizzgen.alwaysdata.net" /></label>
+        <label class="check-row"><input id="privacyModeInput" type="checkbox" /> Mode privé IA: pas d’indexation, pas de quiz automatique, contexte minimal</label>
         <label>Nom de la clé<input id="keyLabel" placeholder="Groq principale" /></label>
         <label>Clé API<input id="keyValue" type="password" placeholder="gsk_..." /></label>
         <div id="keyList" class="key-list"></div>

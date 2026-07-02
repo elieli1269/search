@@ -10,6 +10,7 @@ const store = new Store({
     transcriptionModel: process.env.GROQ_TRANSCRIPTION_MODEL || 'whisper-large-v3-turbo',
     experienceMode: 'explorer',
     quizGenEndpoint: process.env.QUIZZGEN_ENDPOINT || 'https://quizzgen.alwaysdata.net',
+    privacyMode: false,
     apiKeys: [],
     activeApiKeyId: null,
     pages: [],
@@ -155,7 +156,8 @@ ipcMain.handle('settings:get', () => ({
   activeApiKeyId: store.get('activeApiKeyId'),
   envKeyAvailable: Boolean(process.env.GROQ_API_KEY),
   experienceMode: store.get('experienceMode'),
-  quizGenEndpoint: store.get('quizGenEndpoint')
+  quizGenEndpoint: store.get('quizGenEndpoint'),
+  privacyMode: store.get('privacyMode')
 }));
 
 ipcMain.handle('settings:set-models', (_event, payload) => {
@@ -163,6 +165,7 @@ ipcMain.handle('settings:set-models', (_event, payload) => {
   store.set('transcriptionModel', String(payload?.transcriptionModel || '').trim() || 'whisper-large-v3-turbo');
   store.set('experienceMode', ['explorer', 'student'].includes(payload?.experienceMode) ? payload.experienceMode : 'explorer');
   store.set('quizGenEndpoint', String(payload?.quizGenEndpoint || '').trim() || 'https://quizzgen.alwaysdata.net');
+  store.set('privacyMode', Boolean(payload?.privacyMode));
   return { ok: true };
 });
 

@@ -5,9 +5,14 @@ const voiceButton = document.querySelector('#voiceButton');
 const shell = document.querySelector('.zero-shell');
 const stateLabel = document.querySelector('#stateLabel');
 const lastCommand = document.querySelector('#lastCommand');
+const voiceTimer = document.querySelector('#voiceTimer');
+const privacyDashboard = document.querySelector('#privacyDashboard');
+const commandHistory = document.querySelector('#commandHistory');
 const memoryWhisper = document.querySelector('#memoryWhisper');
 const quizWhisper = document.querySelector('#quizWhisper');
 let experienceMode = 'explorer';
+let privacyMode = false;
+const historyEntries = [];
 const settingsDialog = document.querySelector('#settingsDialog');
 const keyList = document.querySelector('#keyList');
 let contextState = null;
@@ -31,12 +36,35 @@ function escapeHtml(value) {
   return String(value).replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
 }
 
+function renderPrivacyDashboard() {
+  privacyDashboard.textContent = privacyMode
+    ? 'Mode privé IA actif · index local, suggestions Groq et quiz automatiques désactivés'
+    : 'Confidentialité · micro coupé par défaut · contexte local actif';
+}
+
+function pushHistory(entry) {
+  historyEntries.unshift({ entry, at: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) });
+  historyEntries.splice(5);
+  commandHistory.innerHTML = historyEntries.map((item) => `<div><strong>${escapeHtml(item.at)}</strong> ${escapeHtml(item.entry)}</div>`).join('');
+}
+
+function updateVoiceTimer({ elapsedMs = 0, maxDurationMs = 20000, recording = false } = {}) {
+  if (!recording) {
+    voiceTimer.textContent = '';
+    return;
+  }
+  voiceTimer.textContent = `${Math.ceil(elapsedMs / 1000)}s / ${Math.ceil(maxDurationMs / 1000)}s`;
+}
+
 async function loadSettings() {
   const settings = await window.semanticBrowser.settings.get();
   document.querySelector('#modelInput').value = settings.groqModel;
   document.querySelector('#transcriptionModelInput').value = settings.transcriptionModel;
   document.querySelector('#experienceModeInput').value = settings.experienceMode || 'explorer';
   document.querySelector('#quizGenEndpointInput').value = settings.quizGenEndpoint || 'https://quizzgen.alwaysdata.net';
+  document.querySelector('#privacyModeInput').checked = Boolean(settings.privacyMode);
+  privacyMode = Boolean(settings.privacyMode);
+  renderPrivacyDashboard();
   experienceMode = settings.experienceMode || 'explorer';
   quizWhisper.textContent = experienceMode === 'student' ? 'Mode étudiant actif · appuie sur le micro puis dis “génère un quiz”.' : '';
   keyList.innerHTML = settings.envKeyAvailable ? '<small>GROQ_API_KEY détectée dans l’environnement.</small>' : '';
@@ -53,6 +81,11 @@ async function configureRuntime() {
 }
 
 async function updateContext(snapshot) {
+  if (privacyMode) {
+    contextState = { ...snapshot, privacyMode: true, matches: [] };
+    memoryWhisper.textContent = 'Mode privé: contexte non indexé et suggestions IA automatiques coupées.';
+    return;
+  }
   try {
     contextState = await window.semanticBrowser.context.update(snapshot);
     if (contextState.matches?.[0]?.score > 0.2) {
@@ -87,6 +120,7 @@ function parseIntent(transcript) {
 
 async function executeIntent(transcript) {
   lastCommand.textContent = `Commande: ${transcript}`;
+  pushHistory(transcript);
   const intent = parseIntent(transcript);
   if (intent.type === 'navigate') {
     webview.src = normalizeUrl(intent.target);
@@ -108,12 +142,12 @@ async function executeIntent(transcript) {
     webview.send('ghost-quiz-answer', intent.answer);
     return;
   }
-  setMode('thinking', 'IA fusionne page, mémoire et intention…');
+  setMode('thinking', privacyMode ? 'IA répond sans mémoire ni index…' : 'IA fusionne page, mémoire et intention…');
   const screenshot = transcript.toLowerCase().includes('visuel') || transcript.toLowerCase().includes('écran') ? await window.semanticBrowser.context.capture() : null;
   try {
     const answer = await window.semanticBrowser.ai.chat([
       { role: 'system', content: 'Tu es un navigateur IA zero-ui. Réponds en français, directement, avec actions concrètes. Utilise le contexte visible et la mémoire locale.' },
-      { role: 'user', content: `Intention: ${transcript}\nContexte temps réel: ${JSON.stringify(contextState).slice(0, 6000)}\nCapture disponible: ${Boolean(screenshot)}` }
+      { role: 'user', content: `Intention: ${transcript}\nContexte temps réel: ${privacyMode ? 'Mode privé: contexte masqué' : JSON.stringify(contextState).slice(0, 6000)}\nCapture disponible: ${Boolean(screenshot)}` }
     ], { temperature: 0.25, maxTokens: 700 });
     webview.send('ghost-suggestion', answer);
   } catch (error) {
@@ -154,7 +188,8 @@ document.querySelector('#saveSettings').addEventListener('click', async (event) 
     groqModel: document.querySelector('#modelInput').value,
     transcriptionModel: document.querySelector('#transcriptionModelInput').value,
     experienceMode: document.querySelector('#experienceModeInput').value,
-    quizGenEndpoint: document.querySelector('#quizGenEndpointInput').value
+    quizGenEndpoint: document.querySelector('#quizGenEndpointInput').value,
+    privacyMode: document.querySelector('#privacyModeInput').checked
   });
   const value = document.querySelector('#keyValue').value.trim();
   if (value) await window.semanticBrowser.keys.add({ label: document.querySelector('#keyLabel').value, value });
@@ -171,6 +206,10 @@ keyList.addEventListener('click', async (event) => {
 
 
 async function generateGhostQuiz(trigger = 'manual', fragment = contextState?.activeFragment || contextState?.visibleText || '') {
+  if (privacyMode) {
+    webview.send('ghost-suggestion', 'Mode privé IA actif: quiz IA désactivé pour ne pas envoyer le fragment de page.');
+    return;
+  }
   setMode('thinking', trigger === 'attention' ? 'Aura éducative: quiz fantôme…' : 'Je prépare une question ciblée…');
   try {
     const result = await window.semanticBrowser.quiz.flash({
@@ -189,6 +228,10 @@ async function generateGhostQuiz(trigger = 'manual', fragment = contextState?.ac
 }
 
 async function generateStudentQuiz() {
+  if (privacyMode) {
+    webview.send('ghost-suggestion', 'Mode privé IA actif: QuizGen désactivé pour ne pas envoyer le contexte visible.');
+    return;
+  }
   setMode('thinking', 'QuizGen prépare un QCM étudiant…');
   try {
     const text = contextState?.visibleText || '';
@@ -213,7 +256,7 @@ async function generateStudentQuiz() {
 
 webview.addEventListener('ipc-message', (event) => {
   if (event.channel === 'context-snapshot') updateContext(event.args[0]);
-  if (event.channel === 'active-content-stable' && experienceMode === 'student') generateGhostQuiz('attention', event.args[0].fragment);
+  if (event.channel === 'active-content-stable' && experienceMode === 'student' && !privacyMode) generateGhostQuiz('attention', event.args[0].fragment);
   if (event.channel === 'quiz-answer') {
     quizWhisper.textContent = event.args[0].correct ? 'Réponse correcte · mémoire renforcée' : 'Réponse à revoir · explication affichée';
   }
@@ -223,19 +266,52 @@ webview.addEventListener('did-navigate', (event) => { lastCommand.textContent = 
 configureRuntime().then(loadSettings).then(() => {
   const voice = new window.VoiceIntentEngine({
     onTranscript: executeIntent,
+    onTick: updateVoiceTimer,
     onState: (state) => {
-      const label = state === 'listening' ? 'Micro actif · réappuie pour envoyer' : state === 'thinking' ? 'Je transcris…' : 'IA en veille · micro coupé';
+      const label = state === 'listening' ? 'Micro actif · relâche pour envoyer · Échap annule' : state === 'thinking' ? 'Je transcris…' : 'IA en veille · micro coupé';
       setMode(state, label);
       voiceButton.setAttribute('aria-pressed', state === 'listening' ? 'true' : 'false');
     }
   });
-  voiceButton.addEventListener('click', async () => {
+
+  const startVoice = async () => {
     try {
-      await voice.togglePushToTalk();
+      await voice.startPushToTalk();
     } catch (error) {
       setMode('idle', 'Micro indisponible · utilise /commande');
       lastCommand.textContent = `Voix désactivée: ${error.message}`;
     }
+  };
+
+  voiceButton.addEventListener('pointerdown', (event) => {
+    event.preventDefault();
+    startVoice();
   });
-  setMode('idle', 'IA en veille · appuie sur le micro pour parler');
+  voiceButton.addEventListener('pointerup', () => voice.stopPushToTalk());
+  voiceButton.addEventListener('pointerleave', () => voice.stopPushToTalk());
+  voiceButton.addEventListener('click', async (event) => {
+    if (event.detail !== 0) return;
+    if (voice.recording) voice.stopPushToTalk();
+    else await startVoice();
+  });
+
+  window.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      voice.cancelPushToTalk();
+      updateVoiceTimer();
+      setMode('idle', 'Commande vocale annulée · micro coupé');
+      return;
+    }
+    if ((event.ctrlKey || event.metaKey) && event.code === 'Space' && !event.repeat) {
+      event.preventDefault();
+      startVoice();
+    }
+  });
+  window.addEventListener('keyup', (event) => {
+    if ((event.ctrlKey || event.metaKey) && event.code === 'Space') {
+      event.preventDefault();
+      voice.stopPushToTalk();
+    }
+  });
+  setMode('idle', 'IA en veille · maintiens le micro ou Ctrl+Espace pour parler');
 });
