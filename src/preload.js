@@ -14,6 +14,11 @@ contextBridge.exposeInMainWorld('semanticBrowser', {
   pages: {
     list: () => ipcRenderer.invoke('pages:list')
   },
+  vault: {
+    list: () => ipcRenderer.invoke('vault:list'),
+    add: (payload) => ipcRenderer.invoke('vault:add', payload),
+    remove: (id) => ipcRenderer.invoke('vault:remove', id)
+  },
   quiz: {
     generate: (payload) => ipcRenderer.invoke('quiz:generate', payload),
     flash: (payload) => ipcRenderer.invoke('quiz:flash', payload)

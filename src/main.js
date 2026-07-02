@@ -10,7 +10,9 @@ const store = new Store({
     transcriptionModel: process.env.GROQ_TRANSCRIPTION_MODEL || 'whisper-large-v3-turbo',
     experienceMode: 'explorer',
     quizGenEndpoint: process.env.QUIZZGEN_ENDPOINT || 'https://quizzgen.alwaysdata.net',
+    privacyMode: false,
     apiKeys: [],
+    vaultItems: [],
     activeApiKeyId: null,
     pages: [],
     contextState: {
@@ -104,6 +106,27 @@ function safeKeyDescriptor(key) {
   };
 }
 
+
+function safeVaultDescriptor(item) {
+  let payload = {};
+  try {
+    payload = JSON.parse(decryptSecret(item.secret) || '{}');
+  } catch {
+    payload = {};
+  }
+  const password = payload.password || payload.value || '';
+  return {
+    id: item.id,
+    label: item.label,
+    username: payload.username || '',
+    url: payload.url || '',
+    note: payload.note || '',
+    masked: password ? `${String(password).slice(0, 2)}••••${String(password).slice(-2)}` : '',
+    encrypted: item.secret?.scheme === 'safeStorage',
+    createdAt: item.createdAt
+  };
+}
+
 function getActiveKeyValue() {
   const envKey = process.env.GROQ_API_KEY;
   if (envKey) return envKey;
@@ -155,7 +178,8 @@ ipcMain.handle('settings:get', () => ({
   activeApiKeyId: store.get('activeApiKeyId'),
   envKeyAvailable: Boolean(process.env.GROQ_API_KEY),
   experienceMode: store.get('experienceMode'),
-  quizGenEndpoint: store.get('quizGenEndpoint')
+  quizGenEndpoint: store.get('quizGenEndpoint'),
+  privacyMode: store.get('privacyMode')
 }));
 
 ipcMain.handle('settings:set-models', (_event, payload) => {
@@ -163,6 +187,7 @@ ipcMain.handle('settings:set-models', (_event, payload) => {
   store.set('transcriptionModel', String(payload?.transcriptionModel || '').trim() || 'whisper-large-v3-turbo');
   store.set('experienceMode', ['explorer', 'student'].includes(payload?.experienceMode) ? payload.experienceMode : 'explorer');
   store.set('quizGenEndpoint', String(payload?.quizGenEndpoint || '').trim() || 'https://quizzgen.alwaysdata.net');
+  store.set('privacyMode', Boolean(payload?.privacyMode));
   return { ok: true };
 });
 
@@ -196,6 +221,32 @@ ipcMain.handle('keys:remove', (_event, id) => {
 });
 
 ipcMain.handle('pages:list', () => store.get('pages', []));
+
+ipcMain.handle('vault:list', () => store.get('vaultItems', []).map(safeVaultDescriptor));
+
+ipcMain.handle('vault:add', (_event, payload) => {
+  const value = String(payload?.password || payload?.value || '').trim();
+  if (!value) throw new Error('Ajoute un mot de passe, une clé ou un secret à enregistrer.');
+  const vaultItems = store.get('vaultItems', []);
+  const item = {
+    id: `vault_${Date.now()}`,
+    label: String(payload?.label || `Secret ${vaultItems.length + 1}`).trim(),
+    secret: encryptSecret(JSON.stringify({
+      username: String(payload?.username || '').trim(),
+      password: value,
+      url: String(payload?.url || '').trim(),
+      note: String(payload?.note || '').trim()
+    })),
+    createdAt: new Date().toISOString()
+  };
+  store.set('vaultItems', [item, ...vaultItems].slice(0, 100));
+  return safeVaultDescriptor(item);
+});
+
+ipcMain.handle('vault:remove', (_event, id) => {
+  store.set('vaultItems', store.get('vaultItems', []).filter((item) => item.id !== id));
+  return { ok: true };
+});
 
 ipcMain.handle('context:update', async (_event, context) => {
   const pages = store.get('pages', []);
