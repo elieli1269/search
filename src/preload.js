@@ -2,6 +2,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('semanticBrowser', {
   runtime: () => ipcRenderer.invoke('app:runtime'),
+  onInitialUrl: (callback) => ipcRenderer.on('open-initial-url', (_event, url) => callback(url)),
+  newWindow: (url) => ipcRenderer.invoke('app:new-window', url),
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
     setModels: (payload) => ipcRenderer.invoke('settings:set-models', payload)

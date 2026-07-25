@@ -1,4 +1,5 @@
 const { ipcRenderer } = require('electron');
+const { applyCourseCleaner, markCourseZone } = require('./cleaner');
 
 let lastScrollY = 0;
 let lastMouse = { x: 0, y: 0 };
@@ -8,6 +9,7 @@ let activeBlockSince = Date.now();
 let proactiveQuizSentAt = 0;
 let ghostRoot;
 let currentQuiz = null;
+let studentMode = false;
 
 function ensureGhostRoot() {
   if (ghostRoot) return ghostRoot;
@@ -57,10 +59,11 @@ function updateActiveBlock(reason) {
   if (candidate.element !== activeBlock) {
     activeBlock = candidate.element;
     activeBlockSince = Date.now();
+    if (studentMode) markCourseZone(activeBlock);
   }
   const fragment = elementText(activeBlock).slice(0, 2200);
   const dwellMs = Date.now() - activeBlockSince;
-  if (dwellMs > 45000 && Date.now() - proactiveQuizSentAt > 90000) {
+  if (studentMode && dwellMs > 45000 && Date.now() - proactiveQuizSentAt > 90000) {
     proactiveQuizSentAt = Date.now();
     ipcRenderer.sendToHost('active-content-stable', { reason, fragment, dwellMs, url: location.href, title: document.title });
   }
@@ -162,6 +165,11 @@ window.addEventListener('DOMContentLoaded', () => { ensureGhostRoot(); emitConte
 
 ipcRenderer.on('ghost-suggestion', (_event, message) => showGhost(message));
 ipcRenderer.on('ghost-aura', (_event, state) => setAura(state));
+ipcRenderer.on('student-mode', (_event, enabled) => {
+  studentMode = Boolean(enabled);
+  applyCourseCleaner(studentMode);
+  if (!studentMode) markCourseZone(null);
+});
 ipcRenderer.on('ghost-quiz', (_event, payload) => showQuiz(payload));
 ipcRenderer.on('ghost-quiz-answer', (_event, answer) => {
   if (currentQuiz) answerQuiz(answer, currentQuiz.answer, currentQuiz.explanation);

@@ -10,6 +10,7 @@ const store = new Store({
     transcriptionModel: process.env.GROQ_TRANSCRIPTION_MODEL || 'whisper-large-v3-turbo',
     experienceMode: 'explorer',
     quizGenEndpoint: process.env.QUIZZGEN_ENDPOINT || 'https://quizzgen.alwaysdata.net',
+    studentMode: false,
     apiKeys: [],
     activeApiKeyId: null,
     pages: [],
@@ -27,7 +28,7 @@ let mainWindow;
 const semanticWorker = new Worker(path.join(__dirname, 'workers', 'semantic-indexer.js'));
 const pendingWorkerJobs = new Map();
 
-function createWindow() {
+function createWindow(initialUrl = null) {
   mainWindow = new BrowserWindow({
     width: 1480,
     height: 940,
@@ -44,6 +45,11 @@ function createWindow() {
   });
 
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  if (initialUrl) {
+    mainWindow.webContents.once('did-finish-load', () => {
+      mainWindow.webContents.send('open-initial-url', initialUrl);
+    });
+  }
 }
 
 app.whenReady().then(() => {
@@ -155,13 +161,16 @@ ipcMain.handle('settings:get', () => ({
   activeApiKeyId: store.get('activeApiKeyId'),
   envKeyAvailable: Boolean(process.env.GROQ_API_KEY),
   experienceMode: store.get('experienceMode'),
-  quizGenEndpoint: store.get('quizGenEndpoint')
+  quizGenEndpoint: store.get('quizGenEndpoint'),
+  studentMode: Boolean(store.get('studentMode'))
 }));
 
 ipcMain.handle('settings:set-models', (_event, payload) => {
   store.set('groqModel', String(payload?.groqModel || '').trim() || 'llama-3.3-70b-versatile');
   store.set('transcriptionModel', String(payload?.transcriptionModel || '').trim() || 'whisper-large-v3-turbo');
-  store.set('experienceMode', ['explorer', 'student'].includes(payload?.experienceMode) ? payload.experienceMode : 'explorer');
+  const studentMode = Boolean(payload?.studentMode) || payload?.experienceMode === 'student';
+  store.set('studentMode', studentMode);
+  store.set('experienceMode', studentMode ? 'student' : 'explorer');
   store.set('quizGenEndpoint', String(payload?.quizGenEndpoint || '').trim() || 'https://quizzgen.alwaysdata.net');
   return { ok: true };
 });
@@ -332,6 +341,11 @@ ipcMain.handle('page:capture', async () => {
   if (!mainWindow) return null;
   const image = await mainWindow.webContents.capturePage();
   return image.resize({ width: 960 }).toDataURL();
+});
+
+ipcMain.handle('app:new-window', (_event, url) => {
+  createWindow(url || null);
+  return { ok: true };
 });
 
 ipcMain.handle('external:open', (_event, url) => shell.openExternal(url));

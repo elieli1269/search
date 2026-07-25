@@ -7,21 +7,26 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <main class="zero-shell" data-mode="idle">
-      <section class="omnibox" aria-label="Interface vocale et recherche">
+    <main class="zero-shell" data-mode="idle" data-student-mode="false">
+      <header class="topbar" aria-label="Navigation et IA">
         <div class="brand-orb" id="voiceOrb"><span></span></div>
-        <input id="address" placeholder="Parle, colle une URL ou décris ton intention…" />
-        <div id="stateLabel">IA en veille contextuelle</div>
-        <input id="quickKey" type="password" placeholder="Clé Groq locale" />
-      </section>
+        <nav class="tab-strip" id="tabStrip" aria-label="Onglets"></nav>
+        <button id="newTabButton" class="icon-button" title="Nouvel onglet">＋</button>
+        <button id="newWindowButton" class="icon-button" title="Nouvelle fenêtre">□</button>
+        <input id="address" aria-label="Recherche ou URL" placeholder="URL, recherche Google ou /commande vocale…" />
+        <button id="quizButton" class="quiz-button" hidden>Quiz</button>
+        <input id="quickKey" type="password" placeholder="Clé Groq locale" title="Entrée pour enregistrer localement" />
+      </header>
 
-      <webview id="webview" allowpopups></webview>
+      <section id="webviewStack" class="webview-stack" aria-label="Pages de navigation"></section>
 
-      <section class="ghost-console" id="ghostConsole" aria-live="polite">
-        <div id="lastCommand">Dis “va sur…”, “compare…”, “trouve…” ou “scrolle…”</div>
-        <div id="memoryWhisper"></div>
-        <div id="quizWhisper"></div>
-      </section>
+      <footer class="statusbar" aria-live="polite">
+        <span id="currentUrl">https://www.wikipedia.org</span>
+        <span id="securityState">Confidentialité: clé locale ou variable d’environnement</span>
+        <span id="microState">Micro: veille</span>
+        <span id="contextStateLabel">Contexte: initialisation</span>
+        <span id="quizWhisper"></span>
+      </footer>
     </main>
 
     <dialog id="settingsDialog">
@@ -30,7 +35,7 @@
         <p>Les clés Groq restent locales et persistantes sur cette machine. Utilise aussi <code>GROQ_API_KEY</code> pour éviter tout stockage applicatif.</p>
         <label>Modèle raisonnement Groq<input id="modelInput" value="llama-3.3-70b-versatile" /></label>
         <label>Modèle transcription<input id="transcriptionModelInput" value="whisper-large-v3-turbo" /></label>
-        <label>Version<select id="experienceModeInput"><option value="explorer">Explorateur</option><option value="student">Étudiant · QuizGen</option></select></label>
+        <label class="toggle-row"><input id="studentModeInput" type="checkbox" /> Activer le Mode Étudiant</label>
         <label>URL QuizGen<input id="quizGenEndpointInput" value="https://quizzgen.alwaysdata.net" /></label>
         <label>Nom de la clé<input id="keyLabel" placeholder="Groq principale" /></label>
         <label>Clé API<input id="keyValue" type="password" placeholder="gsk_..." /></label>

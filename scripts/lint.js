@@ -7,6 +7,7 @@ const files = [
   'src/renderer/app.js',
   'src/renderer/voice-engine.js',
   'src/webview/context-preload.js',
+  'src/webview/cleaner.js',
   'src/workers/semantic-indexer.js'
 ];
 let failed = false;

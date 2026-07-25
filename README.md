@@ -17,7 +17,8 @@ src/main.js                       Processus principal Electron, IPC, Groq, safeS
 src/preload.js                    API sécurisée exposée au renderer
 src/renderer/app.js               Orchestration Zero‑UI, intentions, contexte, suggestions
 src/renderer/voice-engine.js      Capture audio, VAD simple, transcription
-src/webview/context-preload.js    Observation DOM temps réel et Shadow DOM Ghost UI
+src/webview/context-preload.js    Observation DOM, attention, zones de cours et Shadow DOM Ghost UI
+src/webview/cleaner.js            Nettoyage visuel en Mode Étudiant
 src/workers/semantic-indexer.js   Indexation prédictive hors thread UI
 ```
 
@@ -53,7 +54,7 @@ Le workflow `.github/workflows/windows-release.yml` exécute `npm install`, `npm
 
 ## Mode étudiant et QuizGen
 
-La version étudiant se sélectionne dans **Paramètres invisibles → Version → Étudiant · QuizGen**. Dans ce mode, l’utilisateur peut dire ou taper `/génère un quiz` pour transformer le contexte visible de la page en QCM. L’intégration tente d’abord d’utiliser `https://quizzgen.alwaysdata.net`; si aucun endpoint JSON public n’est disponible, le navigateur ouvre le site QuizGen et génère un QCM local de secours à partir du worker sémantique.
+Le Mode Étudiant se sélectionne dans **Paramètres invisibles → Activer le Mode Étudiant**. Dans ce mode, l’utilisateur peut dire ou taper `/génère un quiz` pour transformer le contexte visible de la page en QCM. L’intégration tente d’abord d’utiliser `https://quizzgen.alwaysdata.net`; si aucun endpoint JSON public n’est disponible, le navigateur ouvre le site QuizGen et génère un QCM local de secours à partir du worker sémantique.
 
 > Important: la clé Groq ne doit jamais être rendue visible dans le code public. Utilise `GROQ_API_KEY` ou l’écran local des paramètres.
 
@@ -63,4 +64,11 @@ En mode **Étudiant · QuizGen**, le navigateur suit le bloc textuel central du 
 
 Le quiz est généré à partir du fragment actuellement regardé, pas depuis toute la page, afin de réduire la latence et d’éviter d’envoyer trop de contexte. Si Groq est configuré, `quiz:flash` demande un JSON strict avec une question QCM et une explication. Sinon, le worker sémantique local crée un QCM de secours. La réponse peut se faire au clic dans le Shadow DOM ou à la voix avec une phrase comme `réponse B`.
 
-La barre Zero‑UI contient aussi un champ **Clé Groq locale**. Appuie sur Entrée après collage: la clé est enregistrée durablement dans le stockage local Electron, chiffrée avec `safeStorage` lorsque la plateforme le permet, mais elle n’est jamais écrite dans le code source.
+La barre supérieure Zero‑UI contient aussi un champ **Clé Groq locale**. Appuie sur Entrée après collage: la clé est enregistrée durablement dans le stockage local Electron, chiffrée avec `safeStorage` lorsque la plateforme le permet, mais elle n’est jamais écrite dans le code source.
+
+
+## Navigation et ergonomie
+
+La barre supérieure sépare les onglets, la recherche Google/URL, les indicateurs IA et le champ de clé locale. Les textes d’état ont été déplacés dans une barre inférieure fixe afin d’éviter les chevauchements entre URL, confidentialité, micro et contexte local. Les recherches non‑URL sont automatiquement envoyées vers Google.
+
+Le navigateur prend en charge plusieurs onglets dans la même fenêtre et peut ouvrir une nouvelle fenêtre indépendante. Chaque onglet garde son propre contexte d’attention temps réel, tandis que l’index sémantique local reste partagé par l’application. Le bouton **Quiz** est masqué par défaut et n’apparaît que lorsque le Mode Étudiant est activé.
