@@ -11,6 +11,8 @@ const store = new Store({
     experienceMode: 'explorer',
     quizGenEndpoint: process.env.QUIZZGEN_ENDPOINT || 'https://quizzgen.alwaysdata.net',
     studentMode: false,
+    nexAccountBaseUrl: process.env.NEXACCOUNT_BASE_URL || 'https://nexaccount.alwaysdata.net',
+    nexAccountToken: null,
     apiKeys: [],
     activeApiKeyId: null,
     pages: [],
@@ -110,6 +112,24 @@ function safeKeyDescriptor(key) {
   };
 }
 
+function apiUrl(path) {
+  const base = String(store.get('nexAccountBaseUrl') || 'https://nexaccount.alwaysdata.net').replace(/\/$/, '');
+  return `${base}/${path.replace(/^\//, '')}`;
+}
+
+async function nexFetch(path, options = {}) {
+  const token = store.get('nexAccountToken');
+  const headers = { Accept: 'application/json', ...(options.headers || {}) };
+  if (options.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const response = await fetch(apiUrl(path), { ...options, headers });
+  const text = await response.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
+  if (!response.ok) throw new Error(data?.error || data?.message || `NexAccount ${response.status}`);
+  return data;
+}
+
 function getActiveKeyValue() {
   const envKey = process.env.GROQ_API_KEY;
   if (envKey) return envKey;
@@ -162,7 +182,9 @@ ipcMain.handle('settings:get', () => ({
   envKeyAvailable: Boolean(process.env.GROQ_API_KEY),
   experienceMode: store.get('experienceMode'),
   quizGenEndpoint: store.get('quizGenEndpoint'),
-  studentMode: Boolean(store.get('studentMode'))
+  studentMode: Boolean(store.get('studentMode')),
+  nexAccountBaseUrl: store.get('nexAccountBaseUrl'),
+  nexAccountAuthenticated: Boolean(store.get('nexAccountToken'))
 }));
 
 ipcMain.handle('settings:set-models', (_event, payload) => {
@@ -172,8 +194,53 @@ ipcMain.handle('settings:set-models', (_event, payload) => {
   store.set('studentMode', studentMode);
   store.set('experienceMode', studentMode ? 'student' : 'explorer');
   store.set('quizGenEndpoint', String(payload?.quizGenEndpoint || '').trim() || 'https://quizzgen.alwaysdata.net');
+  store.set('nexAccountBaseUrl', String(payload?.nexAccountBaseUrl || '').trim() || 'https://nexaccount.alwaysdata.net');
   return { ok: true };
 });
+
+
+ipcMain.handle('nexaccount:register', async (_event, payload) => {
+  const data = await nexFetch('auth.php?action=register', { method: 'POST', body: JSON.stringify(payload || {}) });
+  if (data?.token) store.set('nexAccountToken', data.token);
+  return data;
+});
+
+ipcMain.handle('nexaccount:login', async (_event, payload) => {
+  const data = await nexFetch('auth.php?action=login', { method: 'POST', body: JSON.stringify(payload || {}) });
+  if (data?.token) store.set('nexAccountToken', data.token);
+  return data;
+});
+
+ipcMain.handle('nexaccount:logout', () => {
+  store.set('nexAccountToken', null);
+  return { ok: true };
+});
+
+ipcMain.handle('nexaccount:profile', async () => {
+  const data = await nexFetch('auth.php?action=profile');
+  const profile = data?.user || data?.profile || data;
+  if (typeof profile?.student_mode_enabled !== 'undefined') {
+    const enabled = Boolean(Number(profile.student_mode_enabled));
+    store.set('studentMode', enabled);
+    store.set('experienceMode', enabled ? 'student' : 'explorer');
+  }
+  return data;
+});
+
+ipcMain.handle('nexaccount:update-settings', async (_event, payload) => {
+  const data = await nexFetch('auth.php?action=update_settings', { method: 'POST', body: JSON.stringify(payload || {}) });
+  if (typeof payload?.studentMode !== 'undefined') {
+    store.set('studentMode', Boolean(payload.studentMode));
+    store.set('experienceMode', payload.studentMode ? 'student' : 'explorer');
+  }
+  return data;
+});
+
+ipcMain.handle('nexaccount:conversations', () => nexFetch('chat.php?action=conversations'));
+ipcMain.handle('nexaccount:create-conversation', (_event, payload) => nexFetch('chat.php?action=create_conversation', { method: 'POST', body: JSON.stringify(payload || {}) }));
+ipcMain.handle('nexaccount:messages', (_event, id) => nexFetch(`chat.php?action=messages&id=${encodeURIComponent(id)}`));
+ipcMain.handle('nexaccount:delete-conversation', (_event, id) => nexFetch(`chat.php?action=delete_conversation&id=${encodeURIComponent(id)}`, { method: 'DELETE' }));
+ipcMain.handle('nexaccount:send-message', (_event, payload) => nexFetch('chat.php?action=send_message', { method: 'POST', body: JSON.stringify(payload || {}) }));
 
 ipcMain.handle('keys:add', (_event, payload) => {
   const value = String(payload?.value || '').trim();

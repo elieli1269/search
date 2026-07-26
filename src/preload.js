@@ -4,6 +4,18 @@ contextBridge.exposeInMainWorld('semanticBrowser', {
   runtime: () => ipcRenderer.invoke('app:runtime'),
   onInitialUrl: (callback) => ipcRenderer.on('open-initial-url', (_event, url) => callback(url)),
   newWindow: (url) => ipcRenderer.invoke('app:new-window', url),
+  nexAccount: {
+    register: (payload) => ipcRenderer.invoke('nexaccount:register', payload),
+    login: (payload) => ipcRenderer.invoke('nexaccount:login', payload),
+    logout: () => ipcRenderer.invoke('nexaccount:logout'),
+    profile: () => ipcRenderer.invoke('nexaccount:profile'),
+    updateSettings: (payload) => ipcRenderer.invoke('nexaccount:update-settings', payload),
+    conversations: () => ipcRenderer.invoke('nexaccount:conversations'),
+    createConversation: (payload) => ipcRenderer.invoke('nexaccount:create-conversation', payload),
+    messages: (id) => ipcRenderer.invoke('nexaccount:messages', id),
+    deleteConversation: (id) => ipcRenderer.invoke('nexaccount:delete-conversation', id),
+    sendMessage: (payload) => ipcRenderer.invoke('nexaccount:send-message', payload)
+  },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
     setModels: (payload) => ipcRenderer.invoke('settings:set-models', payload)

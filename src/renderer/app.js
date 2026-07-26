@@ -11,6 +11,7 @@ const quizWhisper = document.querySelector('#quizWhisper');
 const settingsDialog = document.querySelector('#settingsDialog');
 const keyList = document.querySelector('#keyList');
 const quizButton = document.querySelector('#quizButton');
+const authState = document.querySelector('#authState');
 let experienceMode = 'explorer';
 let studentMode = false;
 let contextByTab = new Map();
@@ -109,12 +110,14 @@ async function loadSettings() {
   document.querySelector('#transcriptionModelInput').value = settings.transcriptionModel;
   document.querySelector('#studentModeInput').checked = Boolean(settings.studentMode || settings.experienceMode === 'student');
   document.querySelector('#quizGenEndpointInput').value = settings.quizGenEndpoint || 'https://quizzgen.alwaysdata.net';
+  document.querySelector('#nexAccountBaseUrlInput').value = settings.nexAccountBaseUrl || 'https://nexaccount.alwaysdata.net';
   studentMode = Boolean(settings.studentMode || settings.experienceMode === 'student');
   experienceMode = studentMode ? 'student' : 'explorer';
   shell.dataset.studentMode = String(studentMode);
   quizButton.hidden = !studentMode;
   quizWhisper.textContent = studentMode ? 'Mode étudiant actif' : '';
-  securityState.textContent = settings.envKeyAvailable ? 'Confidentialité: GROQ_API_KEY détectée' : 'Confidentialité: clé locale chiffrée si possible';
+  securityState.textContent = settings.nexAccountAuthenticated ? 'Confidentialité: compte NexAccount connecté' : settings.envKeyAvailable ? 'Confidentialité: GROQ_API_KEY détectée' : 'Confidentialité: invité / clé locale';
+  authState.textContent = settings.nexAccountAuthenticated ? 'Compte NexAccount connecté' : 'Mode invité';
   keyList.innerHTML = settings.apiKeys.map((key) => `
     <article class="key-card"><strong>${escapeHtml(key.label)}</strong><br><small>${key.masked} ${key.encrypted ? '· chiffrée' : '· locale'}</small><br>
     <button data-activate="${key.id}">${settings.activeApiKeyId === key.id ? 'Active' : 'Activer'}</button>
@@ -218,9 +221,35 @@ async function generateGhostQuiz(trigger = 'manual', fragment = activeContext()?
   }
 }
 
+
+async function syncNexAccountSettings() {
+  return window.semanticBrowser.nexAccount.updateSettings({ studentMode, groqApiKey: quickKey.value.trim() || undefined });
+}
+
+async function loginNexAccount() {
+  const email = document.querySelector('#authEmail').value.trim();
+  const password = document.querySelector('#authPassword').value;
+  const data = await window.semanticBrowser.nexAccount.login({ email, password });
+  authState.textContent = data?.user?.email ? `Connecté: ${data.user.email}` : 'Compte connecté';
+  await window.semanticBrowser.nexAccount.profile().catch(() => null);
+  await loadSettings();
+}
+
+async function registerNexAccount() {
+  const username = document.querySelector('#authUsername').value.trim();
+  const email = document.querySelector('#authEmail').value.trim();
+  const password = document.querySelector('#authPassword').value;
+  const data = await window.semanticBrowser.nexAccount.register({ username, email, password });
+  authState.textContent = data?.user?.email ? `Inscrit: ${data.user.email}` : 'Compte créé';
+  await loadSettings();
+}
+
 quickKey.addEventListener('keydown', (event) => { if (event.key === 'Enter') saveQuickKey(); });
 quizButton.addEventListener('click', () => generateGhostQuiz('button'));
 document.querySelector('#newTabButton').addEventListener('click', () => createTab());
+document.querySelector('#loginButton').addEventListener('click', () => loginNexAccount().catch((error) => { authState.textContent = error.message; }));
+document.querySelector('#registerButton').addEventListener('click', () => registerNexAccount().catch((error) => { authState.textContent = error.message; }));
+document.querySelector('#logoutButton').addEventListener('click', async () => { await window.semanticBrowser.nexAccount.logout(); await loadSettings(); });
 document.querySelector('#newWindowButton').addEventListener('click', () => window.semanticBrowser.newWindow(activeWebview()?.src || 'https://www.wikipedia.org'));
 tabStrip.addEventListener('click', (event) => {
   const button = event.target.closest('[data-tab]');
@@ -247,10 +276,12 @@ document.querySelector('#saveSettings').addEventListener('click', async (event) 
     transcriptionModel: document.querySelector('#transcriptionModelInput').value,
     experienceMode: studentMode ? 'student' : 'explorer',
     studentMode,
-    quizGenEndpoint: document.querySelector('#quizGenEndpointInput').value
+    quizGenEndpoint: document.querySelector('#quizGenEndpointInput').value,
+    nexAccountBaseUrl: document.querySelector('#nexAccountBaseUrlInput').value
   });
   const value = document.querySelector('#keyValue').value.trim();
   if (value) await window.semanticBrowser.keys.add({ label: document.querySelector('#keyLabel').value, value });
+  if (studentMode) await syncNexAccountSettings().catch(() => null);
   document.querySelector('#keyValue').value = '';
   settingsDialog.close();
   loadSettings();

@@ -72,3 +72,11 @@ La barre supérieure Zero‑UI contient aussi un champ **Clé Groq locale**. App
 La barre supérieure sépare les onglets, la recherche Google/URL, les indicateurs IA et le champ de clé locale. Les textes d’état ont été déplacés dans une barre inférieure fixe afin d’éviter les chevauchements entre URL, confidentialité, micro et contexte local. Les recherches non‑URL sont automatiquement envoyées vers Google.
 
 Le navigateur prend en charge plusieurs onglets dans la même fenêtre et peut ouvrir une nouvelle fenêtre indépendante. Chaque onglet garde son propre contexte d’attention temps réel, tandis que l’index sémantique local reste partagé par l’application. Le bouton **Quiz** est masqué par défaut et n’apparaît que lorsque le Mode Étudiant est activé.
+
+## Intégration NexAccount / Alwaysdata
+
+Le navigateur sait se connecter au backend `https://nexaccount.alwaysdata.net` via les endpoints fournis: `auth.php?action=register`, `auth.php?action=login`, `auth.php?action=profile`, `auth.php?action=update_settings` et les routes `chat.php` pour conversations/messages. Le token est conservé dans le stockage local Electron, puis envoyé en `Authorization: Bearer <token>` via le processus principal.
+
+En mode invité, le navigateur continue de fonctionner localement. En mode connecté, il peut synchroniser le Mode Étudiant et déléguer les conversations au backend MySQL. L’URL du backend est configurable avec `NEXACCOUNT_BASE_URL` ou depuis les paramètres.
+
+Un template SPA PHP autonome est disponible dans `web/nexaccount-spa/index.php` pour déploiement Alwaysdata. Il implémente le layout 3 panneaux demandé: rail de navigation, sidebar de conversations et zone de chat centrale avec paramètres/authentification.

@@ -37,6 +37,10 @@
         <label>Modèle transcription<input id="transcriptionModelInput" value="whisper-large-v3-turbo" /></label>
         <label class="toggle-row"><input id="studentModeInput" type="checkbox" /> Activer le Mode Étudiant</label>
         <label>URL QuizGen<input id="quizGenEndpointInput" value="https://quizzgen.alwaysdata.net" /></label>
+        <label>URL NexAccount<input id="nexAccountBaseUrlInput" value="https://nexaccount.alwaysdata.net" /></label>
+        <div class="auth-grid"><input id="authUsername" placeholder="Nom utilisateur" /><input id="authEmail" placeholder="Email" /><input id="authPassword" type="password" placeholder="Mot de passe" /></div>
+        <div class="auth-actions"><button id="loginButton" type="button">Connexion</button><button id="registerButton" type="button">Inscription</button><button id="logoutButton" type="button">Déconnexion</button></div>
+        <small id="authState">Mode invité</small>
         <label>Nom de la clé<input id="keyLabel" placeholder="Groq principale" /></label>
         <label>Clé API<input id="keyValue" type="password" placeholder="gsk_..." /></label>
         <div id="keyList" class="key-list"></div>
