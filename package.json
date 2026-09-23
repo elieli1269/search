@@ -1,0 +1,44 @@
+{
+  "name": "nexa-browser",
+  "version": "0.1.0",
+  "description": "Nexa Browser is a simple AI-assisted browser for research and study.",
+  "main": "src/main.js",
+  "author": "",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "lint": "node scripts/lint.js",
+    "test": "node test/navigation.test.js",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --win nsis"
+  },
+  "dependencies": {
+    "electron-store": "^8.2.0"
+  },
+  "devDependencies": {
+    "electron": "^31.7.7",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "net.nexa.browser",
+    "productName": "Nexa Browser",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "src/**/*",
+      "package.json",
+      "README.md"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "Nexa-Browser-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}
