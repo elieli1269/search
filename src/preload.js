@@ -4,6 +4,8 @@ contextBridge.exposeInMainWorld('semanticBrowser', {
   runtime: () => ipcRenderer.invoke('app:runtime'),
   onInitialUrl: (callback) => ipcRenderer.on('open-initial-url', (_event, url) => callback(url)),
   newWindow: (url) => ipcRenderer.invoke('app:new-window', url),
+  newPrivateWindow: (url) => ipcRenderer.invoke('app:new-private-window', url),
+  onboarding: { complete: (payload) => ipcRenderer.invoke('onboarding:complete', payload) },
   nexAccount: {
     register: (payload) => ipcRenderer.invoke('nexaccount:register', payload),
     login: (payload) => ipcRenderer.invoke('nexaccount:login', payload),
@@ -23,7 +25,16 @@ contextBridge.exposeInMainWorld('semanticBrowser', {
   keys: {
     add: (payload) => ipcRenderer.invoke('keys:add', payload),
     activate: (id) => ipcRenderer.invoke('keys:activate', id),
-    remove: (id) => ipcRenderer.invoke('keys:remove', id)
+    remove: (id) => ipcRenderer.invoke('keys:remove', id),
+    test: () => ipcRenderer.invoke('keys:test')
+  },
+  browser: {
+    bookmarks: () => ipcRenderer.invoke('browser:bookmarks'),
+    toggleBookmark: (payload) => ipcRenderer.invoke('browser:toggle-bookmark', payload),
+    history: () => ipcRenderer.invoke('browser:history'),
+    recordHistory: (payload) => ipcRenderer.invoke('browser:record-history', payload),
+    downloads: () => ipcRenderer.invoke('browser:downloads'),
+    setTrackerBlocking: (enabled) => ipcRenderer.invoke('browser:set-tracker-blocking', enabled)
   },
   pages: {
     list: () => ipcRenderer.invoke('pages:list')

@@ -1,13 +1,14 @@
 {
-  "name": "semantic-ai-browser",
+  "name": "nexa-browser",
   "version": "0.1.0",
-  "description": "An experimental AI-first web browser with semantic page indexing and Groq-powered assistance.",
+  "description": "Nexa Browser is a simple AI-assisted browser for research and study.",
   "main": "src/main.js",
   "author": "",
   "license": "MIT",
   "scripts": {
     "start": "electron .",
     "lint": "node scripts/lint.js",
+    "test": "node test/navigation.test.js",
     "pack": "electron-builder --dir",
     "dist": "electron-builder --win nsis"
   },
@@ -19,8 +20,8 @@
     "electron-builder": "^24.13.3"
   },
   "build": {
-    "appId": "com.semanticai.browser",
-    "productName": "Semantic AI Browser",
+    "appId": "net.nexa.browser",
+    "productName": "Nexa Browser",
     "directories": {
       "output": "release"
     },
@@ -33,7 +34,7 @@
       "target": [
         "nsis"
       ],
-      "artifactName": "Semantic-AI-Browser-Setup-${version}.${ext}"
+      "artifactName": "Nexa-Browser-Setup-${version}.${ext}"
     },
     "nsis": {
       "oneClick": false,

@@ -3,7 +3,9 @@ const path = require('path');
 
 const files = [
   'src/main.js',
+  'src/config/brand.js',
   'src/preload.js',
+  'src/shared/navigation.js',
   'src/renderer/app.js',
   'src/renderer/voice-engine.js',
   'src/webview/context-preload.js',

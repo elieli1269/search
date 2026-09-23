@@ -1,10 +1,11 @@
-const { app, BrowserWindow, ipcMain, shell, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, safeStorage, session } = require('electron');
 const path = require('path');
 const { Worker } = require('worker_threads');
 const Store = require('electron-store');
+const { BRAND } = require('./config/brand');
 
 const store = new Store({
-  name: 'semantic-ai-browser',
+  name: BRAND.packageName,
   defaults: {
     groqModel: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
     transcriptionModel: process.env.GROQ_TRANSCRIPTION_MODEL || 'whisper-large-v3-turbo',
@@ -12,9 +13,15 @@ const store = new Store({
     quizGenEndpoint: process.env.QUIZZGEN_ENDPOINT || 'https://quizzgen.alwaysdata.net',
     studentMode: false,
     nexAccountBaseUrl: process.env.NEXACCOUNT_BASE_URL || 'https://nexaccount.alwaysdata.net',
+    aiProxyUrl: process.env.NEXA_AI_PROXY_URL || 'https://nexaccount.alwaysdata.net/ai.php',
     nexAccountToken: null,
     apiKeys: [],
     activeApiKeyId: null,
+    bookmarks: [],
+    history: [],
+    downloads: [],
+    onboardingCompleted: false,
+    trackerBlockingEnabled: true,
     pages: [],
     contextState: {
       url: '',
@@ -30,13 +37,13 @@ let mainWindow;
 const semanticWorker = new Worker(path.join(__dirname, 'workers', 'semantic-indexer.js'));
 const pendingWorkerJobs = new Map();
 
-function createWindow(initialUrl = null) {
-  mainWindow = new BrowserWindow({
+function createWindow(initialUrl = null, options = {}) {
+  const window = new BrowserWindow({
     width: 1480,
     height: 940,
     minWidth: 1080,
     minHeight: 720,
-    title: 'Semantic AI Browser',
+    title: options.private ? `${BRAND.name} · Navigation privée` : BRAND.name,
     backgroundColor: '#05070d',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -46,20 +53,45 @@ function createWindow(initialUrl = null) {
     }
   });
 
-  mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  window.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   if (initialUrl) {
-    mainWindow.webContents.once('did-finish-load', () => {
-      mainWindow.webContents.send('open-initial-url', initialUrl);
+    window.webContents.once('did-finish-load', () => {
+      window.webContents.send('open-initial-url', initialUrl);
     });
   }
+  mainWindow = window;
+  return window;
 }
 
 app.whenReady().then(() => {
+  app.setName(BRAND.name);
+  configureSessionGuards();
   createWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
+
+function configureSessionGuards() {
+  const trackerHosts = ['doubleclick.net', 'googlesyndication.com', 'google-analytics.com', 'facebook.net', 'scorecardresearch.com'];
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    callback(['media', 'notifications', 'geolocation'].includes(permission));
+  });
+  session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
+    const host = new URL(details.url).hostname;
+    const blocked = store.get('trackerBlockingEnabled') && trackerHosts.some((tracker) => host === tracker || host.endsWith(`.${tracker}`));
+    callback({ cancel: blocked });
+  });
+  session.defaultSession.on('will-download', (_event, item) => {
+    const downloads = store.get('downloads', []);
+    const entry = { id: `download_${Date.now()}`, filename: item.getFilename(), url: item.getURL(), receivedAt: new Date().toISOString(), state: 'in-progress' };
+    store.set('downloads', [entry, ...downloads].slice(0, 100));
+    item.once('done', (_downloadEvent, state) => {
+      const updated = store.get('downloads', []).map((download) => download.id === entry.id ? { ...download, state, path: item.getSavePath() } : download);
+      store.set('downloads', updated);
+    });
+  });
+}
 
 app.on('window-all-closed', () => {
   semanticWorker.terminate();
@@ -152,7 +184,7 @@ function parseJsonObject(text) {
 
 async function groqChat(messages, options = {}) {
   const key = getActiveKeyValue();
-  if (!key) throw new Error('Ajoute une clé API Groq dans Paramètres ou GROQ_API_KEY.');
+  if (!key) return proxyChat(messages, options);
 
   const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
@@ -170,8 +202,22 @@ async function groqChat(messages, options = {}) {
   return data.choices?.[0]?.message?.content || '';
 }
 
+async function proxyChat(messages, options = {}) {
+  const endpoint = String(store.get('aiProxyUrl') || '').trim();
+  if (!endpoint) throw new Error('L’assistant n’est pas disponible pour le moment. Vous pouvez continuer à naviguer normalement.');
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ action: 'chat', messages, model: options.model || store.get('groqModel'), temperature: options.temperature, maxTokens: options.maxTokens })
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(data?.error || 'L’assistant est momentanément indisponible.');
+  return data?.content || data?.choices?.[0]?.message?.content || '';
+}
+
 ipcMain.handle('app:runtime', () => ({
-  webviewPreload: `file://${path.join(__dirname, 'webview', 'context-preload.js').replace(/\\/g, '/')}`
+  webviewPreload: `file://${path.join(__dirname, 'webview', 'context-preload.js').replace(/\\/g, '/')}`,
+  brand: BRAND
 }));
 
 ipcMain.handle('settings:get', () => ({
@@ -184,7 +230,10 @@ ipcMain.handle('settings:get', () => ({
   quizGenEndpoint: store.get('quizGenEndpoint'),
   studentMode: Boolean(store.get('studentMode')),
   nexAccountBaseUrl: store.get('nexAccountBaseUrl'),
-  nexAccountAuthenticated: Boolean(store.get('nexAccountToken'))
+  nexAccountAuthenticated: Boolean(store.get('nexAccountToken')),
+  aiProxyUrl: store.get('aiProxyUrl'),
+  onboardingCompleted: Boolean(store.get('onboardingCompleted')),
+  trackerBlockingEnabled: Boolean(store.get('trackerBlockingEnabled'))
 }));
 
 ipcMain.handle('settings:set-models', (_event, payload) => {
@@ -195,8 +244,35 @@ ipcMain.handle('settings:set-models', (_event, payload) => {
   store.set('experienceMode', studentMode ? 'student' : 'explorer');
   store.set('quizGenEndpoint', String(payload?.quizGenEndpoint || '').trim() || 'https://quizzgen.alwaysdata.net');
   store.set('nexAccountBaseUrl', String(payload?.nexAccountBaseUrl || '').trim() || 'https://nexaccount.alwaysdata.net');
+  if (payload?.aiProxyUrl) store.set('aiProxyUrl', String(payload.aiProxyUrl).trim());
   return { ok: true };
 });
+
+ipcMain.handle('onboarding:complete', (_event, payload) => {
+  store.set('onboardingCompleted', true);
+  if (typeof payload?.studentMode !== 'undefined') store.set('studentMode', Boolean(payload.studentMode));
+  return { ok: true };
+});
+
+ipcMain.handle('browser:bookmarks', () => store.get('bookmarks', []));
+ipcMain.handle('browser:toggle-bookmark', (_event, payload) => {
+  const url = String(payload?.url || '').trim();
+  if (!url) throw new Error('Adresse introuvable.');
+  const bookmarks = store.get('bookmarks', []);
+  const existing = bookmarks.find((bookmark) => bookmark.url === url);
+  store.set('bookmarks', existing ? bookmarks.filter((bookmark) => bookmark.url !== url) : [{ url, title: String(payload?.title || url), createdAt: new Date().toISOString() }, ...bookmarks].slice(0, 100));
+  return { bookmarked: !existing };
+});
+ipcMain.handle('browser:history', () => store.get('history', []));
+ipcMain.handle('browser:record-history', (_event, payload) => {
+  const url = String(payload?.url || '').trim();
+  if (!/^https?:\/\//i.test(url)) return { ok: false };
+  const history = store.get('history', []);
+  store.set('history', [{ url, title: String(payload?.title || url), visitedAt: new Date().toISOString() }, ...history.filter((entry) => entry.url !== url)].slice(0, 1000));
+  return { ok: true };
+});
+ipcMain.handle('browser:downloads', () => store.get('downloads', []));
+ipcMain.handle('browser:set-tracker-blocking', (_event, enabled) => { store.set('trackerBlockingEnabled', Boolean(enabled)); return { ok: true }; });
 
 
 ipcMain.handle('nexaccount:register', async (_event, payload) => {
@@ -269,6 +345,10 @@ ipcMain.handle('keys:remove', (_event, id) => {
   store.set('apiKeys', apiKeys);
   if (store.get('activeApiKeyId') === id) store.set('activeApiKeyId', apiKeys[0]?.id || null);
   return { ok: true };
+});
+ipcMain.handle('keys:test', async () => {
+  const answer = await groqChat([{ role: 'user', content: 'Réponds uniquement: OK' }], { maxTokens: 8, temperature: 0 });
+  return { ok: /^ok/i.test(answer.trim()), answer };
 });
 
 ipcMain.handle('pages:list', () => store.get('pages', []));
@@ -412,6 +492,11 @@ ipcMain.handle('page:capture', async () => {
 
 ipcMain.handle('app:new-window', (_event, url) => {
   createWindow(url || null);
+  return { ok: true };
+});
+
+ipcMain.handle('app:new-private-window', (_event, url) => {
+  createWindow(url || BRAND.homeUrl, { private: true });
   return { ok: true };
 });
 

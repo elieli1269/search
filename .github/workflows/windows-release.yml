@@ -1,4 +1,4 @@
-name: Windows EXE
+name: Nexa Browser Windows EXE
 
 on:
   push:
@@ -19,5 +19,5 @@ jobs:
       - run: npm run dist
       - uses: actions/upload-artifact@v4
         with:
-          name: Semantic-AI-Browser-Windows
+          name: Nexa-Browser-Windows
           path: release/*.exe
