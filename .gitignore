@@ -6,4 +6,5 @@ out/
 .env
 .env.*
 !.env.example
+src/bundled-key.json
 .DS_Store

@@ -1,4 +1,5 @@
 const { app, BrowserWindow, ipcMain, shell, safeStorage } = require('electron');
+const fs = require('fs');
 const path = require('path');
 const { Worker } = require('worker_threads');
 const Store = require('electron-store');
@@ -130,8 +131,19 @@ async function nexFetch(path, options = {}) {
   return data;
 }
 
+function bundledKey() {
+  try {
+    const file = path.join(__dirname, 'bundled-key.json');
+    if (!fs.existsSync(file)) return '';
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return typeof parsed.key === 'string' ? parsed.key.trim() : '';
+  } catch {
+    return '';
+  }
+}
+
 function getActiveKeyValue() {
-  const envKey = process.env.GROQ_API_KEY;
+  const envKey = process.env.GROQ_API_KEY || bundledKey();
   if (envKey) return envKey;
   const keys = store.get('apiKeys', []);
   const activeId = store.get('activeApiKeyId');
@@ -179,7 +191,7 @@ ipcMain.handle('settings:get', () => ({
   transcriptionModel: store.get('transcriptionModel'),
   apiKeys: store.get('apiKeys', []).map(safeKeyDescriptor),
   activeApiKeyId: store.get('activeApiKeyId'),
-  envKeyAvailable: Boolean(process.env.GROQ_API_KEY),
+  envKeyAvailable: Boolean(process.env.GROQ_API_KEY || bundledKey()),
   experienceMode: store.get('experienceMode'),
   quizGenEndpoint: store.get('quizGenEndpoint'),
   studentMode: Boolean(store.get('studentMode')),

@@ -251,6 +251,9 @@ document.querySelector('#loginButton').addEventListener('click', () => loginNexA
 document.querySelector('#registerButton').addEventListener('click', () => registerNexAccount().catch((error) => { authState.textContent = error.message; }));
 document.querySelector('#logoutButton').addEventListener('click', async () => { await window.semanticBrowser.nexAccount.logout(); await loadSettings(); });
 document.querySelector('#newWindowButton').addEventListener('click', () => window.semanticBrowser.newWindow(activeWebview()?.src || 'https://www.wikipedia.org'));
+document.querySelector('#backButton').addEventListener('click', () => { const view = activeWebview(); if (view?.canGoBack()) view.goBack(); });
+document.querySelector('#forwardButton').addEventListener('click', () => { const view = activeWebview(); if (view?.canGoForward()) view.goForward(); });
+document.querySelector('#reloadButton').addEventListener('click', () => activeWebview()?.reload());
 tabStrip.addEventListener('click', (event) => {
   const button = event.target.closest('[data-tab]');
   if (!button) return;

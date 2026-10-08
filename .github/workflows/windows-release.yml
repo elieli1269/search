@@ -2,22 +2,40 @@ name: Windows EXE
 
 on:
   push:
-    branches: [main, master]
-  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
   build-windows:
     runs-on: windows-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - run: npm install
+      - name: Bundle local Groq key
+        shell: pwsh
+        run: |
+          $key = "${{ secrets.GROQ_API_KEY }}"
+          $json = @{ key = $key } | ConvertTo-Json -Compress
+          Set-Content -Path src/bundled-key.json -Value $json -Encoding utf8
       - run: npm run lint
       - run: npm run dist
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
       - uses: actions/upload-artifact@v4
         with:
           name: Semantic-AI-Browser-Windows
           path: release/*.exe
+          if-no-files-found: error
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.2.${{ github.run_number }}
+          name: Semantic AI Browser Windows
+          files: release/*.exe
+          body: |
+            Installateur NSIS et exécutable portable de Semantic AI Browser.
+            La clé Groq est intégrée si le secret GROQ_API_KEY est défini sur le dépôt.
